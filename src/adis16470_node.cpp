@@ -155,6 +155,7 @@ public:
           publish_imu_data();
         } else {
           ROS_ERROR("Cannot update burst");
+          break;
         }
       } else if (publish_temperature_) {
         if (imu.update() == 0) {
@@ -162,6 +163,7 @@ public:
           publish_temp_data();
         } else {
           ROS_ERROR("Cannot update");
+          break;
         }
       } else if (burst_mode_ && publish_temperature_) {
         if (imu.update_burst() == 0) {
@@ -169,12 +171,14 @@ public:
           publish_temp_data();
         } else {
           ROS_ERROR("Cannot update burst");
+          break;
         }
       } else {
         if (imu.update() == 0) {
           publish_imu_data();
         } else {
           ROS_ERROR("Cannot update");
+          break;
         }
       }
       ros::spinOnce();

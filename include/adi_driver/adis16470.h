@@ -36,6 +36,7 @@
 #include <termios.h>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include <boost/asio.hpp>
 #include <boost/asio/buffer.hpp>
@@ -63,7 +64,7 @@ public:
   int update(void);
   int update_burst(void);
   int bias_correction_update(void);
-  int set_bias_estimation_time(int16_t tbc);
+  int set_bias_estimation_time(uint16_t tbc);
 
 private:
   typedef enum

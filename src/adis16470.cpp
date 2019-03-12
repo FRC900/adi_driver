@@ -30,24 +30,26 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 // OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "ros/ros.h"
-#include <math.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#include <stdint.h>
-#include <termios.h>
-#include <string>
 #include "adi_driver/adis16470.h"
+#include <fcntl.h>
+#include <math.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <termios.h>
+#include "ros/ros.h"
 
 /**
  * @brief Constructor
  */
-Adis16470::Adis16470()
-    : port_io(), wdg_io(), port(port_io), wdg_timeout(0.1),
-      status(PORT_STATUS::IDLE) {}
+Adis16470::Adis16470() : port_io(), wdg_io(), port(port_io), wdg_timeout(0.1), status(PORT_STATUS::IDLE)
+{
+}
 
-Adis16470::~Adis16470() { closePort(); }
+Adis16470::~Adis16470()
+{
+  closePort();
+}
 
 /**
  * @brief Open device
@@ -55,30 +57,33 @@ Adis16470::~Adis16470() { closePort(); }
  * @retval 0 Success
  * @retval -1 Failure
  */
-int Adis16470::openPort(const std::string device) {
-  if (isOpened()) {
-    std::fprintf(stderr, "[Adis16470] Failed to open. Already opened.");
+int Adis16470::openPort(const std::string device)
+{
+  if (isOpened())
+  {
+    std::fprintf(stderr, "[Adis16470] Failed to open. Already opened.\r\n");
     return -1;
   }
 
   boost::system::error_code ec;
   ec.clear();
   port.open(device, ec);
-  if (ec.value() != 0) {
-    std::fprintf(stderr, "[Adis16470] Failed to open. Error code : %d",
-                 ec.value());
+  if (ec.value() != 0)
+  {
+    std::fprintf(stderr, "[Adis16470] Failed to open. Error code : %d", ec.value());
     return -1;
   }
   ec.clear();
   port.set_option(ba::serial_port_base::character_size(8), ec);
-  if (ec.value() != 0) {
-    std::fprintf(stderr, "[Adis16470] Failed to set options. Error code : %d",
-                 ec.value());
+  if (ec.value() != 0)
+  {
+    std::fprintf(stderr, "[Adis16470] Failed to set options. Error code : %d", ec.value());
     return -1;
   }
 
-  if (!init_usb_iss()) {
-    std::fprintf(stderr, "Failed to initialize a USB-ISS to SPI mode.");
+  if (!init_usb_iss())
+  {
+    std::fprintf(stderr, "Failed to initialize a USB-ISS to SPI mode.\r\n");
     return -1;
   }
 
@@ -90,23 +95,30 @@ int Adis16470::openPort(const std::string device) {
 /**
  * @brief Close device
  */
-void Adis16470::closePort() {
-  if (isOpened()) {
+void Adis16470::closePort()
+{
+  if (isOpened())
+  {
     port.cancel();
     port.close();
     port_handel_thread.join();
   }
 }
 
-bool Adis16470::isOpened() { return port.is_open(); }
+bool Adis16470::isOpened()
+{
+  return port.is_open();
+}
 
 /**
  * @param data Product ID (0x4056)
  * @retval 0 Success
  * @retval -1 Failed
  */
-int Adis16470::get_product_id(uint16_t &pid) {
-  if (!read_register(0x72, pid)) {
+int Adis16470::get_product_id(uint16_t& pid)
+{
+  if (!read_register(0x72, pid))
+  {
     return -1;
   }
   return 0;
@@ -120,7 +132,8 @@ int Adis16470::get_product_id(uint16_t &pid) {
  * - See burst read function at pp.14
  * - Data resolution is 16 bit
  */
-int Adis16470::update_burst(void) {
+int Adis16470::update_burst(void)
+{
 #if 0
   unsigned char buff[64] = {0};
   // 0x6800: Burst read function
@@ -171,37 +184,63 @@ int Adis16470::update_burst(void) {
 /**
  * @brief update gyro and accel in high-precision read
  */
-int Adis16470::update(void) {
+int Adis16470::update(void)
+{
   uint16_t gyro_out[3], gyro_low[3], accl_out[3], accl_low[3], temp_out;
-  printf("update start read_register\r\n");
+  //printf("update start read_register\r\n");
 
-  read_register(0x04, gyro_low[0]);
-  read_register(0x06, gyro_out[0]);
-  read_register(0x08, gyro_low[1]);
-  read_register(0x0a, gyro_out[1]);
-  read_register(0x0c, gyro_low[2]);
-  read_register(0x0e, gyro_out[2]);
-  read_register(0x10, accl_low[0]);
-  read_register(0x12, accl_out[0]);
-  read_register(0x14, accl_low[1]);
-  read_register(0x16, accl_out[1]);
-  read_register(0x18, accl_low[2]);
-  read_register(0x1A, accl_out[2]);
-  read_register(0x1C, temp_out);
-  printf("update start read_register done\r\n");
+  if(!read_register(0x04, gyro_low[0])){
+    return -1;
+  }
+  if(!read_register(0x06, gyro_out[0])){
+    return -1;
+  }
+  if(!read_register(0x08, gyro_low[1])){
+    return -1;
+  }
+  if(!read_register(0x0a, gyro_out[1])){
+    return -1;
+  }
+  if(!read_register(0x0c, gyro_low[2])){
+    return -1;
+  }
+  if(!read_register(0x0e, gyro_out[2])){
+    return -1;
+  }
+  if(!read_register(0x10, accl_low[0])){
+    return -1;
+  }
+  if(!read_register(0x12, accl_out[0])){
+    return -1;
+  }
+  if(!read_register(0x14, accl_low[1])){
+    return -1;
+  }
+  if(!read_register(0x16, accl_out[1])){
+    return -1;
+  }
+  if(!read_register(0x18, accl_low[2])){
+    return -1;
+  }
+  if(!read_register(0x1A, accl_out[2])){
+    return -1;
+  }
+  if(!read_register(0x1C, temp_out)){
+    return -1;
+  }
+  //printf("update start read_register done\r\n");
 
   // temperature convert
   temp = temp_out * 0.1;
 
-  printf("update start rconvert\r\n");
+  //printf("update start rconvert\r\n");
   // 32bit convert
-  for (int i = 0; i < 3; i++) {
-    gyro[i] = ((int32_t(gyro_out[i]) << 16) + int32_t(gyro_low[i])) * M_PI /
-              180.0 / 655360.0;
-    accl[i] = ((int32_t(accl_out[i]) << 16) + int32_t(accl_low[i])) * 9.8 /
-              52428800.0;
+  for (int i = 0; i < 3; i++)
+  {
+    gyro[i] = ((int32_t(gyro_out[i]) << 16) + int32_t(gyro_low[i])) * M_PI / 180.0 / 655360.0;
+    accl[i] = ((int32_t(accl_out[i]) << 16) + int32_t(accl_low[i])) * 9.8 / 52428800.0;
   }
-  printf("update start convert done\r\n");
+  //printf("update start convert done\r\n");
   return 0;
 }
 
@@ -210,15 +249,14 @@ int Adis16470::update(void) {
  * @retval 0 Success
  * @retval -1 Failed
  */
-int Adis16470::set_bias_estimation_time(int16_t tbc) {
-#if 0
+int Adis16470::set_bias_estimation_time(uint16_t tbc)
+{
   write_register(0x66, tbc);
   tbc = 0;
-  int16_t dummy = 0;
+  uint16_t dummy = 0;
   read_register(0x66, dummy);
   read_register(0x00, tbc);
-  ROS_INFO("TBC: %04x", tbc);
-#endif
+  std::printf("TBC: %04x", tbc);
   return 0;
 }
 
@@ -227,183 +265,209 @@ int Adis16470::set_bias_estimation_time(int16_t tbc) {
  * @retval 0 Success
  * @retval -1 Failed
  */
-int Adis16470::bias_correction_update(void) {
-#if 0
-  // Bit0: Bias correction update
-  int16_t data = 1;
-  write_register(0x68, data);
-#endif
+int Adis16470::bias_correction_update(void)
+{
+  write_register(0x68, 0x01);
 }
 
-bool Adis16470::flush_port() {
-  return tcflush(port.lowest_layer().native_handle(), TCIOFLUSH) == 0 ? true
-                                                                      : false;
+bool Adis16470::flush_port()
+{
+  return tcflush(port.lowest_layer().native_handle(), TCIOFLUSH) == 0 ? true : false;
 }
 
-void Adis16470::wdg_handler(const boost::system::error_code &ec) {
-  if (!ec) {
-    switch (status) {
-    case PORT_STATUS::READ:
-      std::fprintf(stderr, "[Adis16470] SPI read timeouted");
-      break;
+void Adis16470::wdg_handler(const boost::system::error_code& ec)
+{
+  if (!ec)
+  {
+    switch (status)
+    {
+      case PORT_STATUS::READ:
+        std::fprintf(stderr, "[Adis16470] SPI read timeouted\r\n");
+        break;
 
-    case PORT_STATUS::WRITE:
-      std::fprintf(stderr, "[Adis16470] SPI write timeouted");
-      break;
+      case PORT_STATUS::WRITE:
+        std::fprintf(stderr, "[Adis16470] SPI write timeouted\r\n");
+        break;
     }
-  } else {
-    if (ec.value() != ECANCELED) {
-      std::fprintf(stderr, "[Adis16470] ??? wdg handle error. Code : %d",
-                   ec.value());
+  }
+  else
+  {
+    if (ec.value() != ECANCELED)
+    {
+      std::fprintf(stderr, "[Adis16470] ??? wdg handle error. Code : %d\r\n", ec.value());
     }
   }
 }
 
-void Adis16470::serial_handler(const boost::system::error_code &ec,
-                               std::size_t size) {}
+void Adis16470::serial_handler(const boost::system::error_code& ec, std::size_t size)
+{
+}
 
-bool Adis16470::write_bytes(const std::vector<uint8_t> &tx_bytes,
-                            const double timeout = 1.0) {
-  if (status != PORT_STATUS::IDLE) {
+bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double timeout = 1.0)
+{
+  if (status != PORT_STATUS::IDLE)
+  {
     return false;
   }
   ba::deadline_timer wdg(wdg_io);
   wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
   status = PORT_STATUS::WRITE;
-  wdg.async_wait(
-      boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
-  std::thread wdg_t = std::thread([this]() { wdg_io.run(); });
-  ba::async_write(port, ba::buffer(tx_bytes),
-                  boost::bind(&Adis16470::serial_handler, this,
-                              ba::placeholders::error,
-                              ba::placeholders::bytes_transferred));
+  wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
+  std::thread wdg_t = std::thread([this]()
+                                  {
+                                    wdg_io.run();
+                                  });
+  ba::async_write(port, ba::buffer(tx_bytes), boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error,
+                                                          ba::placeholders::bytes_transferred));
   port_io.run();
   port_io.reset();
   wdg.cancel();
   wdg_t.join();
   wdg_io.reset();
-  if (status == PORT_STATUS::TIME_OUT) {
-    std::fprintf(stderr, "[Adis16470] SPI write timeouted");
+  if (status == PORT_STATUS::TIME_OUT)
+  {
+    std::fprintf(stderr, "[Adis16470] SPI write timeouted\r\n");
     return false;
   }
   status = PORT_STATUS::IDLE;
   return true;
 }
 
-bool Adis16470::read_bytes(std::vector<uint8_t> &rx_bytes,
-                           const double timeout = 1.0) {
-  if (status != PORT_STATUS::IDLE) {
+bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout = 1.0)
+{
+  if (status != PORT_STATUS::IDLE)
+  {
     return false;
   }
   ba::deadline_timer wdg(wdg_io);
   wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
   status = PORT_STATUS::READ;
-  wdg.async_wait(
-      boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
-  std::thread wdg_t = std::thread([this]() { wdg_io.run(); });
-  ba::async_read(port, ba::buffer(rx_bytes),
-                 boost::bind(&Adis16470::serial_handler, this,
-                             ba::placeholders::error,
-                             ba::placeholders::bytes_transferred));
+  wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
+  std::thread wdg_t = std::thread([this]()
+                                  {
+                                    wdg_io.run();
+                                  });
+  ba::async_read(port, ba::buffer(rx_bytes), boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error,
+                                                         ba::placeholders::bytes_transferred));
   port_io.run();
   port_io.reset();
   wdg.cancel();
   wdg_t.join();
   wdg_io.reset();
-  if (status == PORT_STATUS::TIME_OUT) {
-    std::fprintf(stderr, "[Adis16470] SPI read timeouted");
+  if (status == PORT_STATUS::TIME_OUT)
+  {
+    std::fprintf(stderr, "[Adis16470] SPI read timeouted\r\n");
     return false;
   }
   status = PORT_STATUS::IDLE;
   return true;
 }
 
-bool Adis16470::write_register(const uint8_t address, const uint16_t data) {
+bool Adis16470::write_register(const uint8_t address, const uint16_t data)
+{
   std::vector<uint8_t> tx_packet(3);
   std::vector<uint8_t> rx_packet(3);
   tx_packet[0] = 0x61;
   tx_packet[1] = address | 0x80;
   tx_packet[2] = (data >> 8) & 0xFF;
   flush_port();
-  if (!write_bytes(tx_packet)) {
+  if (!write_bytes(tx_packet))
+  {
     return false;
   }
-  if (!read_bytes(rx_packet)) {
+  if (!read_bytes(rx_packet))
+  {
     return false;
   }
-  if (rx_packet[0] != 0xFF) {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK");
+  if (rx_packet[0] != 0xFF)
+  {
+    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
     return false;
   }
 
   ++tx_packet[1];
   tx_packet[2] = data & 0xFF;
   flush_port();
-  if (!write_bytes(tx_packet)) {
+  if (!write_bytes(tx_packet))
+  {
     return false;
   }
-  if (!read_bytes(rx_packet)) {
+  if (!read_bytes(rx_packet))
+  {
     return false;
   }
-  if (rx_packet[0] != 0xFF) {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK");
+  if (rx_packet[0] != 0xFF)
+  {
+    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
     return false;
   }
 
   return true;
 }
 
-bool Adis16470::read_register(const uint8_t address, uint16_t &data) {
+bool Adis16470::read_register(const uint8_t address, uint16_t& data)
+{
   std::vector<uint8_t> tx_packet(3);
   std::vector<uint8_t> rx_packet(3);
   tx_packet[0] = 0x61;
   tx_packet[1] = address & ~0x80;
   tx_packet[2] = 0x00;
   flush_port();
-  if (!write_bytes(tx_packet)) {
+  if (!write_bytes(tx_packet))
+  {
     return false;
   }
-  if (!read_bytes(rx_packet)) {
+  if (!read_bytes(rx_packet))
+  {
     return false;
   }
-  if (rx_packet[0] != 0xFF) {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK");
+  if (rx_packet[0] != 0xFF)
+  {
+    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
     return false;
   }
 
   flush_port();
-  if (!write_bytes(tx_packet)) {
+  if (!write_bytes(tx_packet))
+  {
     return false;
   }
-  if (!read_bytes(rx_packet)) {
+  if (!read_bytes(rx_packet))
+  {
     return false;
   }
-  if (rx_packet[0] != 0xFF) {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK");
+  if (rx_packet[0] != 0xFF)
+  {
+    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
     return false;
   }
 
-  data = (static_cast<uint16_t>(rx_packet[1]) << 8) |
-         static_cast<uint16_t>(rx_packet[2]);
+  data = (static_cast<uint16_t>(rx_packet[1]) << 8) | static_cast<uint16_t>(rx_packet[2]);
   return true;
 }
 
-bool Adis16470::init_usb_iss() {
+bool Adis16470::init_usb_iss()
+{
   flush_port();
-  std::vector<uint8_t> init_packet = {0x5A, 0x02, 0x93, 5};
-  if (!write_bytes(init_packet)) {
+  std::vector<uint8_t> init_packet = { 0x5A, 0x02, 0x93, 5 };
+  if (!write_bytes(init_packet))
+  {
     return false;
   }
 
   std::vector<uint8_t> ack(2);
-  if (!read_bytes(ack)) {
+  if (!read_bytes(ack))
+  {
     return false;
   }
   std::printf("Ack : %02X %02X\r\n", ack[0], ack[1]);
-  if (ack[0] = !0xFF || ack[1] != 0x00) {
+  if (ack[0] = !0xFF || ack[1] != 0x00)
+  {
     return false;
   }
   return true;
 }
 
-bool Adis16470::initAdis16470() {}
+bool Adis16470::initAdis16470()
+{
+}
