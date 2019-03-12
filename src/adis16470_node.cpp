@@ -95,7 +95,7 @@ public:
   /**
    * @brief Check if the device is opened
    */
-  bool is_opened(void) { return (imu.fd_ >= 0); }
+  bool is_opened(void) { return imu.isOpened(); }
   /**
    * @brief Open IMU device file
    */
@@ -106,7 +106,7 @@ public:
     }
     // Wait 10ms for SPI ready
     usleep(10000);
-    int16_t pid = 0;
+    uint16_t pid = 0;
     imu.get_product_id(pid);
     ROS_INFO("Product ID: %x\n", pid);
     imu.set_bias_estimation_time(0x070a);

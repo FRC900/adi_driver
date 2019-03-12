@@ -1,14 +1,17 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(adi_driver)
 
+add_compile_options(-std=c++11)
+
 find_package(catkin REQUIRED COMPONENTS roscpp sensor_msgs std_srvs roslint)
+find_package(Boost REQUIRED COMPONENTS system)
 
 catkin_package(INCLUDE_DIRS include CATKIN_DEPENDS roscpp sensor_msgs std_srvs)
 
-include_directories(include ${catkin_INCLUDE_DIRS})
+include_directories(include ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 
 add_executable(adis16470_node src/adis16470_node.cpp src/adis16470.cpp)
-target_link_libraries(adis16470_node ${catkin_LIBRARIES})
+target_link_libraries(adis16470_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 #Add adis16495
 add_executable(adis16495_node src/adis16495_node.cpp src/adis16495-2.cpp)

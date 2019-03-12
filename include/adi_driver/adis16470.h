@@ -35,15 +35,18 @@
 
 #include <termios.h>
 #include <string>
+#include <thread>
+
+#include <boost/asio.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/bind.hpp>
+#include <boost/lambda/lambda.hpp>
+
+namespace ba = boost::asio;
 
 class Adis16470
 {
 public:
-  //! File descripter for USB-ISS
-  int fd_;
-  //! Saved terminal config
-  struct termios defaults_;
-
   // Gyro sensor(x, y, z)
   double gyro[3];
   // Acceleration sensor(x, y, z)
@@ -52,15 +55,42 @@ public:
   double temp;
 
   Adis16470();
+  ~Adis16470();
   int openPort(const std::string device);
   void closePort();
-  int get_product_id(int16_t& data);
+  bool isOpened();
+  int get_product_id(uint16_t &);
   int update(void);
   int update_burst(void);
-  int read_register(char address, int16_t& data);
-  int write_register(char address, int16_t data);
   int bias_correction_update(void);
   int set_bias_estimation_time(int16_t tbc);
+
+private:
+  typedef enum
+  {
+    IDLE,
+    WRITE,
+    READ,
+    TRANSFER,
+    TIME_OUT
+  } PORT_STATUS;
+  ba::io_service port_io;
+  ba::io_service wdg_io;
+  ba::serial_port port;
+  std::thread port_handel_thread;
+  ba::streambuf serial_buf;
+  const double wdg_timeout;
+  PORT_STATUS status;
+
+  bool flush_port();
+  bool write_bytes(const std::vector<uint8_t> &, const double);
+  bool read_bytes(std::vector<uint8_t> &, const double);
+  bool write_register(const uint8_t address, const uint16_t);
+  bool read_register(const uint8_t address, uint16_t &);
+  void wdg_handler(const boost::system::error_code &);
+  void serial_handler(const boost::system::error_code &, std::size_t);
+  bool init_usb_iss();
+  bool initAdis16470();
 };
 
-#endif  // ADI_DRIVER_ADIS16470_H
+#endif // ADI_DRIVER_ADIS16470_H
