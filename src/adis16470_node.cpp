@@ -37,8 +37,7 @@
 #include "adi_driver/adis16470.h"
 #include "std_srvs/Trigger.h"
 
-class ImuNode
-{
+class ImuNode {
 public:
   Adis16470 imu;
   ros::NodeHandle node_handle_;
@@ -51,12 +50,10 @@ public:
   bool publish_temperature_;
   double rate_;
 
-  bool bias_estimate (std_srvs::Trigger::Request &req,
-                      std_srvs::Trigger::Response &res)
-  {
+  bool bias_estimate(std_srvs::Trigger::Request &req,
+                     std_srvs::Trigger::Response &res) {
     ROS_INFO("bias_estimate");
-    if (imu.bias_correction_update() < 0)
-    {
+    if (imu.bias_correction_update() < 0) {
       res.success = false;
       res.message = "Bias correction update failed";
       return false;
@@ -65,10 +62,8 @@ public:
     res.message = "Success";
     return true;
   }
-  
-  explicit ImuNode(ros::NodeHandle nh)
-    : node_handle_(nh)
-  {
+
+  explicit ImuNode(ros::NodeHandle nh) : node_handle_(nh) {
     // Read parameters
     node_handle_.param("device", device_, std::string("/dev/ttyACM0"));
     node_handle_.param("frame_id", frame_id_, std::string("imu"));
@@ -79,40 +74,34 @@ public:
     ROS_INFO("device: %s", device_.c_str());
     ROS_INFO("frame_id: %s", frame_id_.c_str());
     ROS_INFO("rate: %f [Hz]", rate_);
-    ROS_INFO("burst_mode: %s", (burst_mode_ ? "true": "false"));
-    ROS_INFO("publish_temperature: %s", (publish_temperature_ ? "true": "false"));
+    ROS_INFO("burst_mode: %s", (burst_mode_ ? "true" : "false"));
+    ROS_INFO("publish_temperature: %s",
+             (publish_temperature_ ? "true" : "false"));
 
     // Data publisher
     imu_data_pub_ = node_handle_.advertise<sensor_msgs::Imu>("data_raw", 100);
-    if (publish_temperature_)
-      {
-        temp_data_pub_ = node_handle_.advertise<sensor_msgs::Temperature>("temperature", 100);
-      }
+    if (publish_temperature_) {
+      temp_data_pub_ =
+          node_handle_.advertise<sensor_msgs::Temperature>("temperature", 100);
+    }
 
     // Bias estimate service
-    bias_srv_ = node_handle_.advertiseService("bias_estimate", &ImuNode::bias_estimate, this);
+    bias_srv_ = node_handle_.advertiseService("bias_estimate",
+                                              &ImuNode::bias_estimate, this);
   }
 
-  ~ImuNode()
-  {
-    imu.closePort();
-  }
+  ~ImuNode() { imu.closePort(); }
 
   /**
    * @brief Check if the device is opened
    */
-  bool is_opened(void)
-  {
-    return (imu.fd_ >= 0);
-  }
+  bool is_opened(void) { return (imu.fd_ >= 0); }
   /**
    * @brief Open IMU device file
    */
-  bool open(void)
-  {
+  bool open(void) {
     // Open device file
-    if (imu.openPort(device_) < 0)
-    {
+    if (imu.openPort(device_) < 0) {
       ROS_ERROR("Failed to open device %s", device_.c_str());
     }
     // Wait 10ms for SPI ready
@@ -122,9 +111,8 @@ public:
     ROS_INFO("Product ID: %x\n", pid);
     imu.set_bias_estimation_time(0x070a);
   }
-  
-  int publish_imu_data()
-  {
+
+  int publish_imu_data() {
     sensor_msgs::Imu data;
     data.header.frame_id = frame_id_;
     data.header.stamp = ros::Time::now();
@@ -147,8 +135,7 @@ public:
 
     imu_data_pub_.publish(data);
   }
-  int publish_temp_data()
-  {
+  int publish_temp_data() {
     sensor_msgs::Temperature data;
     data.header.frame_id = frame_id_;
     data.header.stamp = ros::Time::now();
@@ -156,58 +143,37 @@ public:
     // imu Temperature
     data.temperature = imu.temp;
     data.variance = 0;
-    
+
     temp_data_pub_.publish(data);
   }
-  bool spin()
-  {
+  bool spin() {
     ros::Rate loop_rate(rate_);
 
-    while (ros::ok())
-    {
-      if (burst_mode_)
-      {
-        if (imu.update_burst() == 0)
-        {
+    while (ros::ok()) {
+      if (burst_mode_) {
+        if (imu.update_burst() == 0) {
           publish_imu_data();
-        }
-        else
-        {
+        } else {
           ROS_ERROR("Cannot update burst");
         }
-      }
-      else if (publish_temperature_)
-      {
-        if (imu.update() == 0)
-        {
+      } else if (publish_temperature_) {
+        if (imu.update() == 0) {
           publish_imu_data();
           publish_temp_data();
-        }
-        else
-        {
+        } else {
           ROS_ERROR("Cannot update");
         }
-      }
-      else if (burst_mode_ && publish_temperature_)
-      {
-        if (imu.update_burst() == 0)
-        {
+      } else if (burst_mode_ && publish_temperature_) {
+        if (imu.update_burst() == 0) {
           publish_imu_data();
           publish_temp_data();
-        }
-        else
-        {
+        } else {
           ROS_ERROR("Cannot update burst");
         }
-      }
-      else
-      {
-        if (imu.update() == 0)
-        {
+      } else {
+        if (imu.update() == 0) {
           publish_imu_data();
-        }
-        else
-        {
+        } else {
           ROS_ERROR("Cannot update");
         }
       }
@@ -218,19 +184,17 @@ public:
   }
 };
 
-int main(int argc, char** argv)
-{
+int main(int argc, char **argv) {
   ros::init(argc, argv, "imu");
   ros::NodeHandle nh("~");
   ImuNode node(nh);
 
   node.open();
-  while (!node.is_opened())
-  {
+  while (!node.is_opened()) {
     ROS_WARN("Keep trying to open the device in 1 second period...");
     sleep(1);
     node.open();
   }
   node.spin();
-  return(0);
+  return (0);
 }
