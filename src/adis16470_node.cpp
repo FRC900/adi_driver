@@ -194,10 +194,9 @@ int main(int argc, char **argv) {
   ImuNode node(nh);
 
   node.open();
-  while (!node.is_opened()) {
-    ROS_WARN("Keep trying to open the device in 1 second period...");
-    sleep(1);
-    node.open();
+  if (!node.is_opened()) {
+    ROS_ERROR("Failed to Open an IMU");
+    return 1;
   }
   node.spin();
   return (0);
