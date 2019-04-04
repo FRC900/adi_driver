@@ -231,14 +231,14 @@ int Adis16470::update(void)
   //printf("update start read_register done\r\n");
 
   // temperature convert
-  temp = temp_out * 0.1;
+  temp = (double)temp_out * 0.1;
 
   //printf("update start rconvert\r\n");
   // 32bit convert
   for (int i = 0; i < 3; i++)
   {
-    gyro[i] = ((int32_t(gyro_out[i]) << 16) + int32_t(gyro_low[i])) * M_PI / 180.0 / 655360.0;
-    accl[i] = ((int32_t(accl_out[i]) << 16) + int32_t(accl_low[i])) * 9.8 / 52428800.0;
+    gyro[i] = (int32_t)((uint32_t(gyro_out[i]) << 16) | uint32_t(gyro_low[i])) * M_PI / 180.0 / 655360.0;
+    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | uint32_t(accl_low[i])) * 9.8 / 52428800.0;
   }
   //printf("update start convert done\r\n");
   return 0;
@@ -251,11 +251,17 @@ int Adis16470::update(void)
  */
 int Adis16470::set_bias_estimation_time(uint16_t tbc)
 {
-  write_register(0x66, tbc);
+  if(!write_register(0x66, tbc)){
+    return -1;
+  }
   tbc = 0;
   uint16_t dummy = 0;
-  read_register(0x66, dummy);
-  read_register(0x00, tbc);
+  if(!read_register(0x66, dummy)){
+    return -1;
+  }
+  if(!read_register(0x00, tbc)){
+    return -1;
+  }
   std::printf("TBC: %04x", tbc);
   return 0;
 }
@@ -267,7 +273,7 @@ int Adis16470::set_bias_estimation_time(uint16_t tbc)
  */
 int Adis16470::bias_correction_update(void)
 {
-  write_register(0x68, 0x01);
+  return write_register(0x68, 0x01) ? 0 : -1;
 }
 
 bool Adis16470::flush_port()
@@ -301,6 +307,9 @@ void Adis16470::wdg_handler(const boost::system::error_code& ec)
 
 void Adis16470::serial_handler(const boost::system::error_code& ec, std::size_t size)
 {
+  if(ec){
+    std::fprintf(stderr, "[ADIS16470] seiral error : %s\r\n", ec.message().c_str());
+  }
 }
 
 bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double timeout = 1.0)
@@ -369,7 +378,7 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
   std::vector<uint8_t> rx_packet(3);
   tx_packet[0] = 0x61;
   tx_packet[1] = address | 0x80;
-  tx_packet[2] = (data >> 8) & 0xFF;
+  tx_packet[2] = data & 0xFF;
   flush_port();
   if (!write_bytes(tx_packet))
   {
@@ -386,7 +395,7 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
   }
 
   ++tx_packet[1];
-  tx_packet[2] = data & 0xFF;
+  tx_packet[2] = (data >> 8) & 0xFF;
   flush_port();
   if (!write_bytes(tx_packet))
   {
@@ -412,7 +421,7 @@ bool Adis16470::read_register(const uint8_t address, uint16_t& data)
   tx_packet[0] = 0x61;
   tx_packet[1] = address & ~0x80;
   tx_packet[2] = 0x00;
-  flush_port();
+  //flush_port();
   if (!write_bytes(tx_packet))
   {
     return false;
@@ -427,7 +436,7 @@ bool Adis16470::read_register(const uint8_t address, uint16_t& data)
     return false;
   }
 
-  flush_port();
+  //flush_port();
   if (!write_bytes(tx_packet))
   {
     return false;
@@ -441,6 +450,9 @@ bool Adis16470::read_register(const uint8_t address, uint16_t& data)
     std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
     return false;
   }
+
+  //std::printf("TX packet : %02X %02X %02X\r\n", tx_packet[0], tx_packet[1], tx_packet[2]);
+  //std::printf("RX packet : %02X %02X %02X\r\n", rx_packet[0], rx_packet[1], rx_packet[2]);
 
   data = (static_cast<uint16_t>(rx_packet[1]) << 8) | static_cast<uint16_t>(rx_packet[2]);
   return true;
