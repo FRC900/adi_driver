@@ -49,6 +49,9 @@ public:
   bool burst_mode_;
   bool publish_temperature_;
   double rate_;
+  int bias_conf_;
+  int dec_rate_;
+  int filt_;
 
   bool bias_estimate(std_srvs::Trigger::Request &req,
                      std_srvs::Trigger::Response &res) {
@@ -70,6 +73,9 @@ public:
     node_handle_.param("burst_mode", burst_mode_, true);
     node_handle_.param("publish_temperature", publish_temperature_, true);
     node_handle_.param("rate", rate_, 100.0);
+    node_handle_.param("bias_conffig", bias_conf_, 0x0000);
+    node_handle_.param("filter_cntrl", filt_, 1);
+    node_handle_.param("decimation_rate", dec_rate_, static_cast<int>(2000 / rate_));
 
     ROS_INFO("device: %s", device_.c_str());
     ROS_INFO("frame_id: %s", frame_id_.c_str());
@@ -109,8 +115,9 @@ public:
     uint16_t pid = 0;
     imu.get_product_id(pid);
     ROS_INFO("Product ID: %x\n", pid);
-    imu.set_bias_estimation_time(0x0000);
-    imu.set_filt_ctrl(0x0001);
+    imu.set_bias_estimation_time(bias_conf_);
+    imu.set_filt_ctrl(filt_);
+    imu.set_dec_rate(dec_rate_);
   }
 
   int publish_imu_data() {
