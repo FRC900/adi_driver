@@ -74,7 +74,7 @@ public:
     node_handle_.param("publish_temperature", publish_temperature_, true);
     node_handle_.param("rate", rate_, 100.0);
     node_handle_.param("bias_conffig", bias_conf_, 0x0000);
-    node_handle_.param("filter_cntrl", filt_, 1);
+    node_handle_.param("filter_cntrl", filt_, 7);
     node_handle_.param("decimation_rate", dec_rate_, static_cast<int>(2000 / rate_));
 
     ROS_INFO("device: %s", device_.c_str());
