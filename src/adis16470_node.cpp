@@ -109,7 +109,8 @@ public:
     uint16_t pid = 0;
     imu.get_product_id(pid);
     ROS_INFO("Product ID: %x\n", pid);
-    imu.set_bias_estimation_time(0x0700);
+    imu.set_bias_estimation_time(0x0000);
+    imu.set_filt_ctrl(0x0001);
   }
 
   int publish_imu_data() {
