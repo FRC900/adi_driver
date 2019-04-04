@@ -259,10 +259,7 @@ int Adis16470::set_bias_estimation_time(uint16_t tbc)
   if(!read_register(0x66, dummy)){
     return -1;
   }
-  if(!read_register(0x00, tbc)){
-    return -1;
-  }
-  std::printf("TBC: %04x", tbc);
+  std::printf("TBC: %04x\r\n", dummy);
   return 0;
 }
 
@@ -278,17 +275,14 @@ int Adis16470::bias_correction_update(void)
 
 int Adis16470::set_filt_ctrl(const uint16_t filt)
 {
-  if(!write_register(0x66, filt)){
+  if(!write_register(0x5C, filt)){
     return -1;
   }
   uint16_t dummy = 0;
-  if(!read_register(0x66, dummy)){
+  if(!read_register(0x5C, dummy)){
     return -1;
   }
-  if(!read_register(0x00, dummy)){
-    return -1;
-  }
-  std::printf("FILT_CTRL: %04x", dummy);
+  std::printf("FILT_CTRL: %04x\r\n", dummy);
   return 0;
 }
 
