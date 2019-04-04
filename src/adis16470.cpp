@@ -275,6 +275,10 @@ int Adis16470::bias_correction_update(void)
 
 int Adis16470::set_filt_ctrl(const uint16_t filt)
 {
+  if(filt > 8){
+    std::fprintf(stderr, "[Adis16470] Failed to set FILT_CTRL value\r\n");
+    return -1;
+  }
   if(!write_register(0x5C, filt)){
     return -1;
   }
@@ -288,6 +292,10 @@ int Adis16470::set_filt_ctrl(const uint16_t filt)
 
 int Adis16470::set_dec_rate(const uint16_t rate)
 {
+  if(rate > 1999){
+    std::fprintf(stderr, "[Adis16470] Failed to set DEC_RATE value\r\n");
+    return -1;
+  }
   if(!write_register(0x64, rate)){
     return -1;
   }
