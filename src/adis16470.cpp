@@ -276,6 +276,22 @@ int Adis16470::bias_correction_update(void)
   return write_register(0x68, 0x01) ? 0 : -1;
 }
 
+int Adis16470::set_filt_ctrl(const uint16_t filt)
+{
+  if(!write_register(0x66, filt)){
+    return -1;
+  }
+  uint16_t dummy = 0;
+  if(!read_register(0x66, dummy)){
+    return -1;
+  }
+  if(!read_register(0x00, dummy)){
+    return -1;
+  }
+  std::printf("FILT_CTRL: %04x", dummy);
+  return 0;
+}
+
 bool Adis16470::flush_port()
 {
   return tcflush(port.lowest_layer().native_handle(), TCIOFLUSH) == 0 ? true : false;
