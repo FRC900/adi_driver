@@ -66,6 +66,7 @@ public:
   int bias_correction_update(void);
   int set_bias_estimation_time(uint16_t tbc);
   int set_filt_ctrl(const uint16_t filt);
+  int set_dec_rate(const uint16_t rate);
 
 private:
   typedef enum

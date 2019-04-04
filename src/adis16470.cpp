@@ -286,6 +286,19 @@ int Adis16470::set_filt_ctrl(const uint16_t filt)
   return 0;
 }
 
+int Adis16470::set_dec_rate(const uint16_t rate)
+{
+  if(!write_register(0x64, rate)){
+    return -1;
+  }
+  uint16_t dummy = 0;
+  if(!read_register(0x64, dummy)){
+    return -1;
+  }
+  std::printf("DEC_RATE: %04x\r\n", dummy);
+  return 0;
+}
+
 bool Adis16470::flush_port()
 {
   return tcflush(port.lowest_layer().native_handle(), TCIOFLUSH) == 0 ? true : false;
