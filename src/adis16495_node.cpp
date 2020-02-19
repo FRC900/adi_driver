@@ -33,6 +33,7 @@
 #include <string>
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
+#include "std_srvs/Trigger.h"
 #include "adi_driver/adis16495.h"
 
 class ImuNode
@@ -41,10 +42,25 @@ public:
   Adis16495 imu;					
   ros::NodeHandle node_handle_;
   ros::Publisher imu_data_pub_;
+  ros::ServiceServer bias_srv_;
   std::string device_;
   std::string frame_id_;
   bool burst_mode_;
   double rate_;
+  int bias_conf_;
+
+  bool bias_estimate(std_srvs::Trigger::Request &req,
+                     std_srvs::Trigger::Response &res) {
+    ROS_INFO("bias_estimate");
+    if (imu.bias_correction_update() < 0) {
+      res.success = false;
+      res.message = "Bias correction update failed";
+      return false;
+    }
+    res.success = true;
+    res.message = "Success";
+    return true;
+  }
 
   explicit ImuNode(ros::NodeHandle nh)
     : node_handle_(nh)
@@ -54,13 +70,18 @@ public:
     node_handle_.param("frame_id", frame_id_, std::string("imu"));
     node_handle_.param("burst_mode", burst_mode_, true);
     node_handle_.param("rate", rate_, 100.0);
+	node_handle_.param("bias_conf", bias_conf_, 0x708);
 
     ROS_INFO("device: %s", device_.c_str());
     ROS_INFO("frame_id: %s", frame_id_.c_str());
     ROS_INFO("rate: %f [Hz]", rate_);
     ROS_INFO("burst_mode: %s", (burst_mode_ ? "true": "false"));
+	ROS_INFO("bias_conf: %x", bias_conf_);
 
     imu_data_pub_ = node_handle_.advertise<sensor_msgs::Imu>("data_raw", 100);
+    // Bias estimate service
+    bias_srv_ = node_handle_.advertiseService("bias_estimate",
+                                              &ImuNode::bias_estimate, this);
   }
 
   ~ImuNode()
@@ -90,6 +111,7 @@ public:
     int16_t pid = 0;
     imu.get_product_id(pid);
     ROS_INFO("Product ID: %x\n", pid);
+    imu.set_bias_estimation_time(bias_conf_);
   }
   int publish_imu_data()
   {

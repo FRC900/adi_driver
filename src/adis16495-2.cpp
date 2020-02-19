@@ -390,12 +390,18 @@ int Adis16495::update(void)
 
 int Adis16495::set_bias_estimation_time(int16_t tbc)
 {
-  write_register(0x66, tbc);
+  int16_t page_id;
+  read_register(0x00, page_id);
+
+  write_register(0x00, 3); // set page 3
+
+  write_register(0x0e, tbc);
   tbc = 0;
   int16_t dummy = 0;
-  read_register(0x66, dummy);
+  read_register(0x0e, dummy);
   read_register(0x00, tbc);
   ROS_INFO("TBC: %04x", tbc);
+  write_register(0x00, page_id); // restore page ID
   return 0;
 }
 
@@ -407,9 +413,14 @@ int Adis16495::set_bias_estimation_time(int16_t tbc)
 
 int Adis16495::bias_correction_update(void)
 {
+  int16_t page_id;
+  read_register(0x00, page_id);
+
+  write_register(0x00, 3); // set page 3
   // Bit0: Bias correction update
   int16_t data = 1;
-  write_register(0x68, data);
+  write_register(0x02, data);
+  write_register(0x00, page_id); // restore page ID
 }
 
 
