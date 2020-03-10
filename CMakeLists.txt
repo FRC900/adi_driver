@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(adi_driver)
 
-add_compile_options(-std=c++11)
+#add_compile_options(-std=c++11)
+include("../cmake_modules/CMakeOpt.cmake")
 
 find_package(catkin REQUIRED COMPONENTS roscpp sensor_msgs std_srvs roslint)
 find_package(Boost REQUIRED COMPONENTS system)

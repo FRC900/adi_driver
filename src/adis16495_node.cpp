@@ -39,7 +39,7 @@
 class ImuNode
 {
 public:
-  Adis16495 imu;					
+  Adis16495 imu;
   ros::NodeHandle node_handle_;
   ros::Publisher imu_data_pub_;
   ros::ServiceServer bias_srv_;
@@ -99,7 +99,7 @@ public:
   /**
    * @brief Open IMU device file
    */
-  bool open(void)
+  void open(void)
   {
     // Open device file
     if (imu.openPort(device_) < 0)
@@ -113,7 +113,7 @@ public:
     ROS_INFO("Product ID: %x\n", pid);
     imu.set_bias_estimation_time(bias_conf_);
   }
-  int publish_imu_data()
+  void publish_imu_data()
   {
     sensor_msgs::Imu data;
     data.header.frame_id = frame_id_;

@@ -405,8 +405,8 @@ bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout 
 
 bool Adis16470::write_register(const uint8_t address, const uint16_t data)
 {
-  std::vector<uint8_t> tx_packet(3);
-  std::vector<uint8_t> rx_packet(3);
+  static std::vector<uint8_t> tx_packet(3);
+  static std::vector<uint8_t> rx_packet(3);
   tx_packet[0] = 0x61;
   tx_packet[1] = address | 0x80;
   tx_packet[2] = data & 0xFF;
@@ -447,8 +447,8 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
 
 bool Adis16470::read_register(const uint8_t address, uint16_t& data)
 {
-  std::vector<uint8_t> tx_packet(3);
-  std::vector<uint8_t> rx_packet(3);
+  static std::vector<uint8_t> tx_packet(3);
+  static std::vector<uint8_t> rx_packet(3);
   tx_packet[0] = 0x61;
   tx_packet[1] = address & ~0x80;
   tx_packet[2] = 0x00;
@@ -504,7 +504,7 @@ bool Adis16470::init_usb_iss()
     return false;
   }
   std::printf("Ack : %02X %02X\r\n", ack[0], ack[1]);
-  if (ack[0] = !0xFF || ack[1] != 0x00)
+  if (ack[0] != 0xFF || ack[1] != 0x00)
   {
     return false;
   }
@@ -513,4 +513,5 @@ bool Adis16470::init_usb_iss()
 
 bool Adis16470::initAdis16470()
 {
+	return true;
 }

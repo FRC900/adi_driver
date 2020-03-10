@@ -109,6 +109,7 @@ public:
     // Open device file
     if (imu.openPort(device_) < 0) {
       ROS_ERROR("Failed to open device %s", device_.c_str());
+	  return false;
     }
     // Wait 10ms for SPI ready
     usleep(10000);
@@ -118,9 +119,10 @@ public:
     imu.set_bias_estimation_time(bias_conf_);
     imu.set_filt_ctrl(filt_);
     imu.set_dec_rate(dec_rate_);
+	return true;
   }
 
-  int publish_imu_data() {
+  void publish_imu_data() {
     sensor_msgs::Imu data;
     data.header.frame_id = frame_id_;
     data.header.stamp = ros::Time::now();
@@ -143,7 +145,7 @@ public:
 
     imu_data_pub_.publish(data);
   }
-  int publish_temp_data() {
+  void publish_temp_data() {
     sensor_msgs::Temperature data;
     data.header.frame_id = frame_id_;
     data.header.stamp = ros::Time::now();
@@ -201,8 +203,7 @@ int main(int argc, char **argv) {
   ros::NodeHandle nh("~");
   ImuNode node(nh);
 
-  node.open();
-  if (!node.is_opened()) {
+  if (!node.open() || !node.is_opened()) {
     ROS_ERROR("Failed to Open an IMU");
     return 1;
   }

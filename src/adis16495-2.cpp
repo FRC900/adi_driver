@@ -154,7 +154,6 @@ void Adis16495::closePort()
 int Adis16495::get_product_id(int16_t& pid)
 {
   // get product ID
-  int r;
   unsigned char buff[20];
 
   // Sending data
@@ -210,12 +209,12 @@ int Adis16495::get_product_id(int16_t& pid)
  * @param address Register address
  * @retval 0 Success
  * @retval -1 Failed
- * 
+ *
  * - Adress is the first byte of actual address
  * - Actual data at the adress will be returned by next call.
  */
 
-int Adis16495::read_register(char address, int16_t& data)
+int Adis16495::read_register(unsigned char address, int16_t& data)
 {
   unsigned char buff[3] = {0x61, address, 0x00};
   int size = write(fd_, buff, 3);
@@ -235,6 +234,7 @@ int Adis16495::read_register(char address, int16_t& data)
     perror("read");
   }
   data = big_endian_to_short(&buff[1]);
+  return 0;
 }
 
 /**
@@ -247,7 +247,7 @@ int Adis16495::read_register(char address, int16_t& data)
  * - Specify data at the adress.
  */
 
-int Adis16495::write_register(char address, int16_t data)
+int Adis16495::write_register(unsigned char address, int16_t data)
 {
   unsigned char buff[5] = {0x61, 0x00, 0x00, 0x00, 0x00};
   // Set R~/W bit 1
@@ -367,12 +367,11 @@ int Adis16495::update(void)
   read_register(0x24, accl_out[1]);
   read_register(0x26, accl_low[2]);
   read_register(0x1e, accl_out[2]);
-  read_register(0x00, temp_out); 
-
+  read_register(0x00, temp_out);
 
   // temperature convert
   temp = temp_out * 0.1;
-  
+
   // 32bit convert
   for (int i=0; i < 3; i++)
   {
@@ -421,6 +420,7 @@ int Adis16495::bias_correction_update(void)
   int16_t data = 1;
   write_register(0x02, data);
   write_register(0x00, page_id); // restore page ID
+  return 0;
 }
 
 
