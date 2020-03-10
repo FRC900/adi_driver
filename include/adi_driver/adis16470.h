@@ -75,13 +75,14 @@ private:
     WRITE,
     READ,
     TRANSFER,
-    TIME_OUT
+    TIME_OUT,
+	SERIAL_ERROR
   } PORT_STATUS;
   ba::io_service port_io;
-  ba::io_service wdg_io;
+  //ba::io_service wdg_io;
   ba::serial_port port;
-  std::thread port_handel_thread;
-  ba::streambuf serial_buf;
+  //std::thread port_handel_thread;
+  //ba::streambuf serial_buf;
   const double wdg_timeout;
   PORT_STATUS status;
 
@@ -91,7 +92,7 @@ private:
   bool write_register(const uint8_t address, const uint16_t);
   bool read_register(const uint8_t address, uint16_t &);
   void wdg_handler(const boost::system::error_code &);
-  void serial_handler(const boost::system::error_code &, std::size_t);
+  void serial_handler(const boost::system::error_code &);
   bool init_usb_iss();
   bool initAdis16470();
 };

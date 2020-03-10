@@ -42,7 +42,7 @@
 /**
  * @brief Constructor
  */
-Adis16470::Adis16470() : port_io(), wdg_io(), port(port_io), wdg_timeout(0.1), status(PORT_STATUS::IDLE)
+Adis16470::Adis16470() : port_io(), port(port_io), wdg_timeout(0.1), status(PORT_STATUS::IDLE)
 {
 }
 
@@ -101,7 +101,7 @@ void Adis16470::closePort()
   {
     port.cancel();
     port.close();
-    port_handel_thread.join();
+    //port_handel_thread.join();
   }
 }
 
@@ -326,6 +326,7 @@ void Adis16470::wdg_handler(const boost::system::error_code& ec)
         std::fprintf(stderr, "[Adis16470] SPI write timeouted\r\n");
         break;
     }
+	status = PORT_STATUS::TIME_OUT;
   }
   else
   {
@@ -333,13 +334,16 @@ void Adis16470::wdg_handler(const boost::system::error_code& ec)
     {
       std::fprintf(stderr, "[Adis16470] ??? wdg handle error. Code : %d\r\n", ec.value());
     }
+	status = PORT_STATUS::SERIAL_ERROR;
   }
+  port.cancel();
 }
 
-void Adis16470::serial_handler(const boost::system::error_code& ec, std::size_t size)
+void Adis16470::serial_handler(const boost::system::error_code& ec)
 {
   if(ec){
     std::fprintf(stderr, "[ADIS16470] seiral error : %s\r\n", ec.message().c_str());
+	status = PORT_STATUS::SERIAL_ERROR;
   }
 }
 
@@ -347,26 +351,29 @@ bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double t
 {
   if (status != PORT_STATUS::IDLE)
   {
+    std::fprintf(stderr, "[Adis16470] SPI write while status not IDLE\r\n");
     return false;
   }
-  ba::deadline_timer wdg(wdg_io);
-  wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
-  status = PORT_STATUS::WRITE;
-  wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
-  std::thread wdg_t = std::thread([this]()
-                                  {
-                                    wdg_io.run();
-                                  });
-  ba::async_write(port, ba::buffer(tx_bytes), boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error,
-                                                          ba::placeholders::bytes_transferred));
-  port_io.run();
+
   port_io.reset();
+  ba::deadline_timer wdg(port_io, boost::posix_time::millisec(timeout * 1000));
+  status = PORT_STATUS::WRITE;
+  ba::async_write(port, ba::buffer(tx_bytes),
+		  boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error));
+
+  port_io.run();
   wdg.cancel();
-  wdg_t.join();
-  wdg_io.reset();
+
   if (status == PORT_STATUS::TIME_OUT)
   {
-    std::fprintf(stderr, "[Adis16470] SPI write timeouted\r\n");
+    std::fprintf(stderr, "[Adis16470] SPI write timeout\r\n");
+	status = PORT_STATUS::IDLE;
+    return false;
+  }
+  if (status == PORT_STATUS::SERIAL_ERROR)
+  {
+    std::fprintf(stderr, "[Adis16470] SPI write error\r\n");
+	status = PORT_STATUS::IDLE;
     return false;
   }
   status = PORT_STATUS::IDLE;
@@ -377,26 +384,30 @@ bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout 
 {
   if (status != PORT_STATUS::IDLE)
   {
+    std::fprintf(stderr, "[Adis16470] SPI read while status not IDLE\r\n");
     return false;
   }
-  ba::deadline_timer wdg(wdg_io);
-  wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
+
+  port_io.reset();
+  ba::deadline_timer wdg(port_io, boost::posix_time::millisec(timeout * 1000));
   status = PORT_STATUS::READ;
   wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
-  std::thread wdg_t = std::thread([this]()
-                                  {
-                                    wdg_io.run();
-                                  });
-  ba::async_read(port, ba::buffer(rx_bytes), boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error,
-                                                         ba::placeholders::bytes_transferred));
+  ba::async_read(port, ba::buffer(rx_bytes),
+		  boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error));
+
   port_io.run();
-  port_io.reset();
   wdg.cancel();
-  wdg_t.join();
-  wdg_io.reset();
+
   if (status == PORT_STATUS::TIME_OUT)
   {
-    std::fprintf(stderr, "[Adis16470] SPI read timeouted\r\n");
+    std::fprintf(stderr, "[Adis16470] SPI read timeout\r\n");
+	status = PORT_STATUS::IDLE;
+    return false;
+  }
+  if (status == PORT_STATUS::SERIAL_ERROR)
+  {
+    std::fprintf(stderr, "[Adis16470] SPI read error\r\n");
+	status = PORT_STATUS::IDLE;
     return false;
   }
   status = PORT_STATUS::IDLE;
@@ -413,6 +424,7 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
   flush_port();
   if (!write_bytes(tx_packet))
   {
+    std::fprintf(stderr, "[Adis16470] SPI write while status not IDLE\r\n");
     return false;
   }
   if (!read_bytes(rx_packet))
