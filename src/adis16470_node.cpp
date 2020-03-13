@@ -70,7 +70,7 @@ public:
     // Read parameters
     node_handle_.param("device", device_, std::string("/dev/ttyACM0"));
     node_handle_.param("frame_id", frame_id_, std::string("imu"));
-    node_handle_.param("burst_mode", burst_mode_, true);
+    node_handle_.param("burst_mode", burst_mode_, false);
     node_handle_.param("publish_temperature", publish_temperature_, true);
     node_handle_.param("rate", rate_, 100.0);
     node_handle_.param("bias_conffig", bias_conf_, 0x0000);
@@ -165,7 +165,7 @@ public:
           publish_imu_data();
         } else {
           ROS_ERROR("Cannot update burst");
-          break;
+          //break;
         }
       } else if (publish_temperature_) {
         if (imu.update() == 0) {
@@ -173,7 +173,7 @@ public:
           publish_temp_data();
         } else {
           ROS_ERROR("Cannot update");
-          break;
+          //break;
         }
       } else if (burst_mode_ && publish_temperature_) {
         if (imu.update_burst() == 0) {
@@ -181,14 +181,14 @@ public:
           publish_temp_data();
         } else {
           ROS_ERROR("Cannot update burst");
-          break;
+          //break;
         }
       } else {
         if (imu.update() == 0) {
           publish_imu_data();
         } else {
           ROS_ERROR("Cannot update");
-          break;
+          //break;
         }
       }
       ros::spinOnce();

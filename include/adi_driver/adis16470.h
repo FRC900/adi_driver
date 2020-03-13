@@ -88,14 +88,15 @@ private:
   PORT_STATUS status;
 
   bool flush_port();
-  bool write_bytes(const std::vector<uint8_t> &, const double);
-  bool read_bytes(std::vector<uint8_t> &, const double);
+  bool write_bytes(const std::vector<uint8_t> &, const double timeout = 1.0);
+  bool read_bytes(std::vector<uint8_t> &, const double timeout = 1.0);
   bool write_register(const uint8_t address, const uint16_t);
   bool read_register(const uint8_t address, uint16_t &);
   void wdg_handler(const boost::system::error_code &);
   void serial_handler(const boost::system::error_code &);
   bool init_usb_iss();
   bool initAdis16470();
+  int16_t big_endian_to_short(const uint8_t *buf);
 };
 
 #endif // ADI_DRIVER_ADIS16470_H

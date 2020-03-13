@@ -124,6 +124,11 @@ int Adis16470::get_product_id(uint16_t& pid)
   return 0;
 }
 
+int16_t Adis16470::big_endian_to_short(const uint8_t *buf)
+{
+	return (static_cast<uint16_t>(buf[0]) << 8) | static_cast<uint16_t>(buf[1]);
+}
+
 /**
  * @brief Update all information by bust read
  * @retval 0 Success
@@ -134,6 +139,67 @@ int Adis16470::get_product_id(uint16_t& pid)
  */
 int Adis16470::update_burst(void)
 {
+  static std::vector<uint8_t> burstWriteBuf(23);
+  // 0x6800: Burst read function
+  burstWriteBuf[0] = 0x61;
+  burstWriteBuf[1] = 0x68;
+  burstWriteBuf[2] = 0x00;
+  if (!write_bytes(burstWriteBuf))
+  {
+	  perror("burst write burstWriteBuf");
+	  return -1;
+  }
+  flush_port();
+  static std::vector<uint8_t> burstReadBuf(23);
+  if (!read_bytes(burstReadBuf))
+  {
+	  perror("burst read burstreadbuf");
+	  return -1;
+  }
+  const uint16_t diag_stat = big_endian_to_short(&burstReadBuf[3]);
+  if (diag_stat != 0)
+  {
+    fprintf(stderr, "burst diag_stat error: expected 0000, read %04x\n", diag_stat);
+    return -1;
+  }
+
+  uint16_t calced_checksum = 0;
+  for (size_t i = 3; i < (3+18); i++)
+	  calced_checksum += static_cast<uint16_t>(burstReadBuf[i]) & 0x00FF;
+  const uint16_t read_checksum = big_endian_to_short(&burstReadBuf[21]);
+  if (calced_checksum != read_checksum)
+  {
+	  std::stringstream s;
+	  for (const auto b : burstReadBuf)
+	  {
+		  s << " ";
+		  if (b < 16)
+			  s << " ";
+		  s << std::hex << static_cast<unsigned>(b);
+	  }
+	  ROS_INFO_STREAM(s.str().c_str());
+	  fprintf(stderr, "burst checksum error: calculated %04x, read %04x\n",
+			  calced_checksum, read_checksum);
+	  return -1;
+  }
+
+  //
+  // X_GYRO_OUT
+  gyro[0] = big_endian_to_short(&burstReadBuf[5]) * M_PI / 180 / 10.0;
+  // Y_GYRO_OUT
+  gyro[1] = big_endian_to_short(&burstReadBuf[7]) * M_PI / 180 / 10.0;
+  // Z_GYRO_OUT
+  gyro[2] = big_endian_to_short(&burstReadBuf[9]) * M_PI / 180 / 10.0;
+  // X_ACCL_OUT
+  accl[0] = big_endian_to_short(&burstReadBuf[11]) * M_PI / 180 / 10.0;
+  // Y_ACCL_OUT
+  accl[1] = big_endian_to_short(&burstReadBuf[13]) * M_PI / 180 / 10.0;
+  // Z_ACCL_OUT
+  accl[2] = big_endian_to_short(&burstReadBuf[15]) * M_PI / 180 / 10.0;
+  // TEMP_OUT
+  temp = big_endian_to_short(&burstReadBuf[17]) * 0.1;
+
+  return 0;
 #if 0
   unsigned char buff[64] = {0};
   // 0x6800: Burst read function
@@ -176,7 +242,7 @@ int Adis16470::update_burst(void)
   // Z_ACCL_OUT
   accl[2] = big_endian_to_short(&buff[15]) * M_PI / 180 / 10.0;
   // TEMP_OUT
-  temp = big_endian_to_short(&buff[16]) * 0.1;
+  temp = big_endian_to_short(&buff[17]) * 0.1;
 #endif
   return 0;
 }
@@ -358,7 +424,7 @@ void Adis16470::serial_handler(const boost::system::error_code& ec)
   wdg.cancel();
 }
 
-bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double timeout = 1.0)
+bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double timeout)
 {
   if (status != PORT_STATUS::IDLE)
   {
@@ -392,7 +458,7 @@ bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double t
   return true;
 }
 
-bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout = 1.0)
+bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout)
 {
   if (status != PORT_STATUS::IDLE)
   {
