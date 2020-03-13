@@ -314,20 +314,29 @@ bool Adis16470::flush_port()
 
 void Adis16470::wdg_handler(const boost::system::error_code& ec)
 {
-	ROS_INFO_STREAM("wdg_handler");
   if (!ec)
   {
     switch (status)
     {
       case PORT_STATUS::READ:
-        std::fprintf(stderr, "[Adis16470] SPI read timeouted\r\n");
+        std::fprintf(stderr, "[Adis16470] SPI read timeout\r\n");
         break;
 
       case PORT_STATUS::WRITE:
-        std::fprintf(stderr, "[Adis16470] SPI write timeouted\r\n");
+        std::fprintf(stderr, "[Adis16470] SPI write timeout\r\n");
+        break;
+
+	  default:
+        std::fprintf(stderr, "[Adis16470] Unkown SPI state %d in timeout\r\n", status);
         break;
     }
 	status = PORT_STATUS::TIME_OUT;
+  }
+  else if (ec == boost::asio::error::operation_aborted)
+  {
+	  // Canceling the watchdog isn't a port error - it means
+	  // the read/write completed successfully
+	  return;
   }
   else
   {
@@ -342,9 +351,8 @@ void Adis16470::wdg_handler(const boost::system::error_code& ec)
 
 void Adis16470::serial_handler(const boost::system::error_code& ec)
 {
-	ROS_INFO("serial_handler");
   if(ec){
-    std::fprintf(stderr, "[ADIS16470] seiral error : %s\r\n", ec.message().c_str());
+    std::fprintf(stderr, "[ADIS16470] serial error : %s\r\n", ec.message().c_str());
 	status = PORT_STATUS::SERIAL_ERROR;
   }
   wdg.cancel();
@@ -358,10 +366,11 @@ bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double t
     return false;
   }
 
-  ROS_INFO_STREAM("write_bytes");
+  //ROS_INFO_STREAM("write_bytes (" << tx_bytes.size() << ") : timeout = " << timeout);
   port_io.reset();
   status = PORT_STATUS::WRITE;
   wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
+  wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
   ba::async_write(port, ba::buffer(tx_bytes),
 		  boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error));
 
@@ -391,7 +400,7 @@ bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout 
     return false;
   }
 
-  ROS_INFO_STREAM("read_bytes");
+  //ROS_INFO_STREAM("read_bytes : timeout = " << timeout);
   port_io.reset();
   status = PORT_STATUS::READ;
   wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
@@ -400,8 +409,8 @@ bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout 
 		  boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error));
 
   port_io.run();
-  for (const auto b : rx_bytes)
-	  ROS_INFO_STREAM(" <--- " << static_cast<int>(b));
+  //for (const auto b : rx_bytes)
+	  //ROS_INFO_STREAM(" <--- " << static_cast<int>(b));
 
   if (status == PORT_STATUS::TIME_OUT)
   {
@@ -520,7 +529,7 @@ bool Adis16470::init_usb_iss()
   {
     return false;
   }
-  std::printf("Ack : %02X %02X\r\n", ack[0], ack[1]);
+  //std::printf("Ack : %02X %02X\r\n", ack[0], ack[1]);
   if (ack[0] != 0xFF || ack[1] != 0x00)
   {
     return false;
