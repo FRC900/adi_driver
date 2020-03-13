@@ -84,6 +84,7 @@ private:
   //std::thread port_handel_thread;
   //ba::streambuf serial_buf;
   const double wdg_timeout;
+  ba::deadline_timer wdg;
   PORT_STATUS status;
 
   bool flush_port();
