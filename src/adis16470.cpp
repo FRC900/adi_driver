@@ -85,7 +85,7 @@ int Adis16470::open_port(const std::string &device)
  * @retval 0 Success
  * @retval -1 Failed
  */
-int Adis16470::get_product_id(uint16_t& pid)
+int Adis16470::get_product_id(int16_t& pid)
 {
   if (!read_register(0x72, pid))
   {
@@ -227,7 +227,7 @@ int Adis16470::update_burst(void)
  */
 int Adis16470::update(void)
 {
-  uint16_t gyro_out[3], gyro_low[3], accl_out[3], accl_low[3], temp_out;
+  int16_t gyro_out[3], gyro_low[3], accl_out[3], accl_low[3], temp_out;
   //printf("update start read_register\r\n");
 
   if(!read_register_half_transaction(0x04, gyro_low[0])){ // First read doesn't return anything
@@ -293,13 +293,12 @@ int Adis16470::update(void)
  * @retval 0 Success
  * @retval -1 Failed
  */
-int Adis16470::set_bias_estimation_time(uint16_t tbc)
+int Adis16470::set_bias_estimation_time(int16_t tbc)
 {
   if(!write_register(0x66, tbc)){
     return -1;
   }
-  tbc = 0;
-  uint16_t dummy = 0;
+  int16_t dummy = 0;
   if(!read_register(0x66, dummy)){
     return -1;
   }
@@ -317,7 +316,7 @@ int Adis16470::bias_correction_update(void)
   return write_register(0x68, 0x01) ? 0 : -1;
 }
 
-int Adis16470::set_filt_ctrl(const uint16_t filt)
+int Adis16470::set_filt_ctrl(const int16_t filt)
 {
   if(filt > 8){
     std::fprintf(stderr, "[Adis16470] Failed to set FILT_CTRL value\r\n");
@@ -326,7 +325,7 @@ int Adis16470::set_filt_ctrl(const uint16_t filt)
   if(!write_register(0x5C, filt)){
     return -1;
   }
-  uint16_t dummy = 0;
+  int16_t dummy = 0;
   if(!read_register(0x5C, dummy)){
     return -1;
   }
@@ -334,7 +333,7 @@ int Adis16470::set_filt_ctrl(const uint16_t filt)
   return 0;
 }
 
-int Adis16470::set_dec_rate(const uint16_t rate)
+int Adis16470::set_dec_rate(const int16_t rate)
 {
   if(rate > 1999){
     std::fprintf(stderr, "[Adis16470] Failed to set DEC_RATE value\r\n");
@@ -343,7 +342,7 @@ int Adis16470::set_dec_rate(const uint16_t rate)
   if(!write_register(0x64, rate)){
     return -1;
   }
-  uint16_t dummy = 0;
+  int16_t dummy = 0;
   if(!read_register(0x64, dummy)){
     return -1;
   }
@@ -352,7 +351,7 @@ int Adis16470::set_dec_rate(const uint16_t rate)
 }
 
 
-bool Adis16470::write_register(const uint8_t address, const uint16_t data)
+bool Adis16470::write_register(const uint8_t address, const int16_t data)
 {
   static std::vector<uint8_t> tx_packet(3);
   static std::vector<uint8_t> rx_packet(3);
@@ -400,7 +399,7 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
  * @retval true Sucess
  * @retval false Failure
  */
-bool Adis16470::read_register_half_transaction(const uint8_t address, uint16_t& data)
+bool Adis16470::read_register_half_transaction(const uint8_t address, int16_t& data)
 {
   static std::vector<uint8_t> tx_packet(3);
   static std::vector<uint8_t> rx_packet(3);
@@ -424,7 +423,7 @@ bool Adis16470::read_register_half_transaction(const uint8_t address, uint16_t& 
   return true;
 }
 
-bool Adis16470::read_register(const uint8_t address, uint16_t& data)
+bool Adis16470::read_register(const uint8_t address, int16_t& data)
 {
 	return (read_register_half_transaction(address, data) &&
 	        read_register_half_transaction(address, data));

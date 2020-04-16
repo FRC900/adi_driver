@@ -32,6 +32,5 @@ class SerialPort
 		PORT_STATUS status;
 		void wdg_handler(const boost::system::error_code &);
 		void serial_handler(const boost::system::error_code &);
-
 };
 

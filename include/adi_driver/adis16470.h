@@ -53,18 +53,18 @@ public:
   ~Adis16470();
   int open_port(const std::string &device);
 
-  int get_product_id(uint16_t &);
+  int get_product_id(int16_t &);
   int update(void);
   int update_burst(void);
   int bias_correction_update(void);
-  int set_bias_estimation_time(uint16_t tbc);
-  int set_filt_ctrl(const uint16_t filt);
-  int set_dec_rate(const uint16_t rate);
+  int set_bias_estimation_time(int16_t tbc);
+  int set_filt_ctrl(const int16_t filt);
+  int set_dec_rate(const int16_t rate);
 
 private:
-  bool write_register(const uint8_t address, const uint16_t);
-  bool read_register(const uint8_t address, uint16_t &);
-  bool read_register_half_transaction(const uint8_t address, uint16_t &);
+  bool write_register(const uint8_t address, const int16_t);
+  bool read_register(const uint8_t address, int16_t &);
+  bool read_register_half_transaction(const uint8_t address, int16_t &);
   bool init_usb_iss();
   bool initAdis16470();
   int16_t big_endian_to_short(const uint8_t *buf);

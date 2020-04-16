@@ -109,7 +109,7 @@ public:
     }
     // Wait 10ms for SPI ready
     usleep(10000);
-    uint16_t pid = 0;
+    int16_t pid = 0;
     imu.get_product_id(pid);
     ROS_INFO("Product ID: %x\n", pid);
     imu.set_bias_estimation_time(bias_conf_);
