@@ -42,13 +42,16 @@
 /**
  * @brief Constructor
  */
-Adis16470::Adis16470() : port_io(), port(port_io), wdg_timeout(0.1), wdg(port_io), status(PORT_STATUS::IDLE)
+Adis16470::Adis16470()
 {
 }
 
+/**
+ * @brief Destructor
+ */
 Adis16470::~Adis16470()
 {
-  closePort();
+  serial_port.closePort();
 }
 
 /**
@@ -57,33 +60,18 @@ Adis16470::~Adis16470()
  * @retval 0 Success
  * @retval -1 Failure
  */
-int Adis16470::openPort(const std::string device)
+int Adis16470::open_port(const std::string &device)
 {
-  if (isOpened())
+  if (serial_port.openPort(device))
   {
-    std::fprintf(stderr, "[Adis16470] Failed to open. Already opened.\r\n");
-    return -1;
-  }
-
-  boost::system::error_code ec;
-  ec.clear();
-  port.open(device, ec);
-  if (ec.value() != 0)
-  {
-    std::fprintf(stderr, "[Adis16470] Failed to open. Error code : %d\r\n", ec.value());
-    return -1;
-  }
-  ec.clear();
-  port.set_option(ba::serial_port_base::character_size(8), ec);
-  if (ec.value() != 0)
-  {
-    std::fprintf(stderr, "[Adis16470] Failed to set options. Error code : %d\r\n", ec.value());
+    std::fprintf(stderr, "[Adis16470] Failed to open serial port.\r\n");
     return -1;
   }
 
   if (!init_usb_iss())
   {
     std::fprintf(stderr, "Failed to initialize a USB-ISS to SPI mode.\r\n");
+	serial_port.closePort();
     return -1;
   }
 
@@ -93,25 +81,7 @@ int Adis16470::openPort(const std::string device)
 }
 
 /**
- * @brief Close device
- */
-void Adis16470::closePort()
-{
-  if (isOpened())
-  {
-    port.cancel();
-    port.close();
-    //port_handel_thread.join();
-  }
-}
-
-bool Adis16470::isOpened()
-{
-  return port.is_open();
-}
-
-/**
- * @param data Product ID (0x4056)
+ * @param pid Product ID (0x4056)
  * @retval 0 Success
  * @retval -1 Failed
  */
@@ -124,13 +94,18 @@ int Adis16470::get_product_id(uint16_t& pid)
   return 0;
 }
 
+/**
+ *  @brief Convert big endian bytestream to a short
+ *  @param buf Input buffer
+ *  @retval converted value
+ */
 int16_t Adis16470::big_endian_to_short(const uint8_t *buf)
 {
-	return (static_cast<uint16_t>(buf[0]) << 8) | static_cast<uint16_t>(buf[1]);
+	return (static_cast<uint16_t>(buf[0]) << 8) | (static_cast<uint16_t>(buf[1]) & 0x00FF);
 }
 
 /**
- * @brief Update all information by bust read
+ * @brief Update all information by burst read
  * @retval 0 Success
  * @retval -1 Failed
  *
@@ -144,14 +119,14 @@ int Adis16470::update_burst(void)
   burstWriteBuf[0] = 0x61;
   burstWriteBuf[1] = 0x68;
   burstWriteBuf[2] = 0x00;
-  if (!write_bytes(burstWriteBuf))
+  if (!serial_port.write_bytes(burstWriteBuf))
   {
 	  perror("burst write burstWriteBuf");
 	  return -1;
   }
-  flush_port();
+  serial_port.flushPort(); // TODO - necessary?
   static std::vector<uint8_t> burstReadBuf(23);
-  if (!read_bytes(burstReadBuf))
+  if (!serial_port.read_bytes(burstReadBuf))
   {
 	  perror("burst read burstreadbuf");
 	  return -1;
@@ -191,11 +166,11 @@ int Adis16470::update_burst(void)
   // Z_GYRO_OUT
   gyro[2] = big_endian_to_short(&burstReadBuf[9]) * M_PI / 180 / 10.0;
   // X_ACCL_OUT
-  accl[0] = big_endian_to_short(&burstReadBuf[11]) * M_PI / 180 / 10.0;
+  accl[0] = big_endian_to_short(&burstReadBuf[11]) * (1.25 / 1000.) * 9.80665;
   // Y_ACCL_OUT
-  accl[1] = big_endian_to_short(&burstReadBuf[13]) * M_PI / 180 / 10.0;
+  accl[1] = big_endian_to_short(&burstReadBuf[13]) * (1.25 / 1000.) * 9.80665;
   // Z_ACCL_OUT
-  accl[2] = big_endian_to_short(&burstReadBuf[15]) * M_PI / 180 / 10.0;
+  accl[2] = big_endian_to_short(&burstReadBuf[15]) * (1.25 / 1000.) * 9.80665;
   // TEMP_OUT
   temp = big_endian_to_short(&burstReadBuf[17]) * 0.1;
 
@@ -255,43 +230,46 @@ int Adis16470::update(void)
   uint16_t gyro_out[3], gyro_low[3], accl_out[3], accl_low[3], temp_out;
   //printf("update start read_register\r\n");
 
-  if(!read_register(0x04, gyro_low[0])){
+  if(!read_register_half_transaction(0x04, gyro_low[0])){ // First read doesn't return anything
     return -1;
   }
-  if(!read_register(0x06, gyro_out[0])){
+  if(!read_register_half_transaction(0x06, gyro_low[0])){ // next read gets the previous req plus
+    return -1;                               // requests the next address
+  }
+  if(!read_register_half_transaction(0x08, gyro_out[0])){
     return -1;
   }
-  if(!read_register(0x08, gyro_low[1])){
+  if(!read_register_half_transaction(0x0a, gyro_low[1])){
     return -1;
   }
-  if(!read_register(0x0a, gyro_out[1])){
+  if(!read_register_half_transaction(0x0c, gyro_out[1])){
     return -1;
   }
-  if(!read_register(0x0c, gyro_low[2])){
+  if(!read_register_half_transaction(0x0e, gyro_low[2])){
     return -1;
   }
-  if(!read_register(0x0e, gyro_out[2])){
+  if(!read_register_half_transaction(0x10, gyro_out[2])){
     return -1;
   }
-  if(!read_register(0x10, accl_low[0])){
+  if(!read_register_half_transaction(0x12, accl_low[0])){
     return -1;
   }
-  if(!read_register(0x12, accl_out[0])){
+  if(!read_register_half_transaction(0x14, accl_out[0])){
     return -1;
   }
-  if(!read_register(0x14, accl_low[1])){
+  if(!read_register_half_transaction(0x16, accl_low[1])){
     return -1;
   }
-  if(!read_register(0x16, accl_out[1])){
+  if(!read_register_half_transaction(0x18, accl_out[1])){
     return -1;
   }
-  if(!read_register(0x18, accl_low[2])){
+  if(!read_register_half_transaction(0x1a, accl_low[2])){
     return -1;
   }
-  if(!read_register(0x1A, accl_out[2])){
+  if(!read_register_half_transaction(0x1C, accl_out[2])){
     return -1;
   }
-  if(!read_register(0x1C, temp_out)){
+  if(!read_register_half_transaction(0x1C, temp_out)){
     return -1;
   }
   //printf("update start read_register done\r\n");
@@ -303,8 +281,8 @@ int Adis16470::update(void)
   // 32bit convert
   for (int i = 0; i < 3; i++)
   {
-    gyro[i] = (int32_t)((uint32_t(gyro_out[i]) << 16) | uint32_t(gyro_low[i])) * M_PI / 180.0 / 655360.0;
-    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | uint32_t(accl_low[i])) * 9.8 / 52428800.0;
+    gyro[i] = (int32_t)((uint32_t(gyro_out[i]) << 16) | (uint32_t(gyro_low[i]) & 0x0000FFFF)) * M_PI / 180.0 / 655360.0;
+    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | (uint32_t(accl_low[i]) & 0x0000FFFF)) * 9.80665 * 1.25 / (double)(1<<16);
   }
   //printf("update start convert done\r\n");
   return 0;
@@ -373,126 +351,6 @@ int Adis16470::set_dec_rate(const uint16_t rate)
   return 0;
 }
 
-bool Adis16470::flush_port()
-{
-  return tcflush(port.lowest_layer().native_handle(), TCIOFLUSH) == 0 ? true : false;
-}
-
-void Adis16470::wdg_handler(const boost::system::error_code& ec)
-{
-  if (!ec)
-  {
-    switch (status)
-    {
-      case PORT_STATUS::READ:
-        std::fprintf(stderr, "[Adis16470] SPI read timeout\r\n");
-        break;
-
-      case PORT_STATUS::WRITE:
-        std::fprintf(stderr, "[Adis16470] SPI write timeout\r\n");
-        break;
-
-	  default:
-        std::fprintf(stderr, "[Adis16470] Unkown SPI state %d in timeout\r\n", status);
-        break;
-    }
-	status = PORT_STATUS::TIME_OUT;
-  }
-  else if (ec == boost::asio::error::operation_aborted)
-  {
-	  // Canceling the watchdog isn't a port error - it means
-	  // the read/write completed successfully
-	  return;
-  }
-  else
-  {
-    if (ec.value() != ECANCELED)
-    {
-      std::fprintf(stderr, "[Adis16470] ??? wdg handle error. Code : %d\r\n", ec.value());
-    }
-	status = PORT_STATUS::SERIAL_ERROR;
-  }
-  port.cancel();
-}
-
-void Adis16470::serial_handler(const boost::system::error_code& ec)
-{
-  if(ec){
-    std::fprintf(stderr, "[ADIS16470] serial error : %s\r\n", ec.message().c_str());
-	status = PORT_STATUS::SERIAL_ERROR;
-  }
-  wdg.cancel();
-}
-
-bool Adis16470::write_bytes(const std::vector<uint8_t>& tx_bytes, const double timeout)
-{
-  if (status != PORT_STATUS::IDLE)
-  {
-    std::fprintf(stderr, "[Adis16470] SPI write while status not IDLE\r\n");
-    return false;
-  }
-
-  //ROS_INFO_STREAM("write_bytes (" << tx_bytes.size() << ") : timeout = " << timeout);
-  port_io.reset();
-  status = PORT_STATUS::WRITE;
-  wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
-  wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
-  ba::async_write(port, ba::buffer(tx_bytes),
-		  boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error));
-
-  port_io.run_one();
-
-  if (status == PORT_STATUS::TIME_OUT)
-  {
-    std::fprintf(stderr, "[Adis16470] SPI write timeout\r\n");
-	status = PORT_STATUS::IDLE;
-    return false;
-  }
-  if (status == PORT_STATUS::SERIAL_ERROR)
-  {
-    std::fprintf(stderr, "[Adis16470] SPI write error\r\n");
-	status = PORT_STATUS::IDLE;
-    return false;
-  }
-  status = PORT_STATUS::IDLE;
-  return true;
-}
-
-bool Adis16470::read_bytes(std::vector<uint8_t>& rx_bytes, const double timeout)
-{
-  if (status != PORT_STATUS::IDLE)
-  {
-    std::fprintf(stderr, "[Adis16470] SPI read while status not IDLE\r\n");
-    return false;
-  }
-
-  //ROS_INFO_STREAM("read_bytes : timeout = " << timeout);
-  port_io.reset();
-  status = PORT_STATUS::READ;
-  wdg.expires_from_now(boost::posix_time::millisec(timeout * 1000));
-  wdg.async_wait(boost::bind(&Adis16470::wdg_handler, this, ba::placeholders::error));
-  ba::async_read(port, ba::buffer(rx_bytes),
-		  boost::bind(&Adis16470::serial_handler, this, ba::placeholders::error));
-
-  port_io.run();
-  //for (const auto b : rx_bytes)
-	  //ROS_INFO_STREAM(" <--- " << static_cast<int>(b));
-
-  if (status == PORT_STATUS::TIME_OUT)
-  {
-    std::fprintf(stderr, "[Adis16470] SPI read timeout\r\n");
-	status = PORT_STATUS::IDLE;
-    return false;
-  }
-  if (status == PORT_STATUS::SERIAL_ERROR)
-  {
-    std::fprintf(stderr, "[Adis16470] SPI read error\r\n");
-	status = PORT_STATUS::IDLE;
-    return false;
-  }
-  status = PORT_STATUS::IDLE;
-  return true;
-}
 
 bool Adis16470::write_register(const uint8_t address, const uint16_t data)
 {
@@ -501,13 +359,12 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
   tx_packet[0] = 0x61;
   tx_packet[1] = address | 0x80;
   tx_packet[2] = data & 0xFF;
-  flush_port();
-  if (!write_bytes(tx_packet))
+  if (!serial_port.write_bytes(tx_packet))
   {
     std::fprintf(stderr, "[Adis16470] SPI write while status not IDLE\r\n");
     return false;
   }
-  if (!read_bytes(rx_packet))
+  if (!serial_port.read_bytes(rx_packet))
   {
     return false;
   }
@@ -519,12 +376,11 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
 
   ++tx_packet[1];
   tx_packet[2] = (data >> 8) & 0xFF;
-  flush_port();
-  if (!write_bytes(tx_packet))
+  if (!serial_port.write_bytes(tx_packet))
   {
     return false;
   }
-  if (!read_bytes(rx_packet))
+  if (!serial_port.read_bytes(rx_packet))
   {
     return false;
   }
@@ -537,34 +393,25 @@ bool Adis16470::write_register(const uint8_t address, const uint16_t data)
   return true;
 }
 
-bool Adis16470::read_register(const uint8_t address, uint16_t& data)
+/*
+ * @brief - request a register read. Data is available on the next read
+ * @param address 7-bit address to read
+ * @param data holds return data
+ * @retval true Sucess
+ * @retval false Failure
+ */
+bool Adis16470::read_register_half_transaction(const uint8_t address, uint16_t& data)
 {
   static std::vector<uint8_t> tx_packet(3);
   static std::vector<uint8_t> rx_packet(3);
   tx_packet[0] = 0x61;
   tx_packet[1] = address & ~0x80;
   tx_packet[2] = 0x00;
-  //flush_port();
-  if (!write_bytes(tx_packet))
+  if (!serial_port.write_bytes(tx_packet))
   {
     return false;
   }
-  if (!read_bytes(rx_packet))
-  {
-    return false;
-  }
-  if (rx_packet[0] != 0xFF)
-  {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
-    return false;
-  }
-
-  //flush_port();
-  if (!write_bytes(tx_packet))
-  {
-    return false;
-  }
-  if (!read_bytes(rx_packet))
+  if (!serial_port.read_bytes(rx_packet))
   {
     return false;
   }
@@ -573,25 +420,27 @@ bool Adis16470::read_register(const uint8_t address, uint16_t& data)
     std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
     return false;
   }
-
-  //std::printf("TX packet : %02X %02X %02X\r\n", tx_packet[0], tx_packet[1], tx_packet[2]);
-  //std::printf("RX packet : %02X %02X %02X\r\n", rx_packet[0], rx_packet[1], rx_packet[2]);
-
-  data = (static_cast<uint16_t>(rx_packet[1]) << 8) | static_cast<uint16_t>(rx_packet[2]);
+  data = big_endian_to_short(&rx_packet[1]);
   return true;
+}
+
+bool Adis16470::read_register(const uint8_t address, uint16_t& data)
+{
+	return (read_register_half_transaction(address, data) &&
+	        read_register_half_transaction(address, data));
 }
 
 bool Adis16470::init_usb_iss()
 {
-  flush_port();
-  std::vector<uint8_t> init_packet = { 0x5A, 0x02, 0x93, 5 };
-  if (!write_bytes(init_packet))
+  serial_port.flushPort();
+  const std::vector<uint8_t> init_packet = { 0x5A, 0x02, 0x93, 0x05 };
+  if (!serial_port.write_bytes(init_packet))
   {
     return false;
   }
 
   std::vector<uint8_t> ack(2);
-  if (!read_bytes(ack))
+  if (!serial_port.read_bytes(ack))
   {
     return false;
   }

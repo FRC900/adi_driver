@@ -33,6 +33,7 @@
 #include <string>
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
+#include "sensor_msgs/Temperature.h"
 #include "std_srvs/Trigger.h"
 #include "adi_driver/adis16495.h"
 
@@ -42,10 +43,12 @@ public:
   Adis16495 imu;
   ros::NodeHandle node_handle_;
   ros::Publisher imu_data_pub_;
+  ros::Publisher temp_data_pub_;
   ros::ServiceServer bias_srv_;
   std::string device_;
   std::string frame_id_;
   bool burst_mode_;
+  bool publish_temperature_;
   double rate_;
   int bias_conf_;
 
@@ -69,6 +72,7 @@ public:
     node_handle_.param("device", device_, std::string("/dev/ttyACM0"));
     node_handle_.param("frame_id", frame_id_, std::string("imu"));
     node_handle_.param("burst_mode", burst_mode_, true);
+    node_handle_.param("publish_temperature", publish_temperature_, true);
     node_handle_.param("rate", rate_, 100.0);
 	node_handle_.param("bias_conf", bias_conf_, 0x708);
 
@@ -79,6 +83,11 @@ public:
 	ROS_INFO("bias_conf: %x", bias_conf_);
 
     imu_data_pub_ = node_handle_.advertise<sensor_msgs::Imu>("data_raw", 100);
+	if (publish_temperature_) {
+		temp_data_pub_ =
+			node_handle_.advertise<sensor_msgs::Temperature>("temperature", 100);
+	}
+
     // Bias estimate service
     bias_srv_ = node_handle_.advertiseService("bias_estimate",
                                               &ImuNode::bias_estimate, this);
@@ -86,32 +95,34 @@ public:
 
   ~ImuNode()
   {
-    imu.closePort();
   }
 
   /**
-   * @brief Check if the device is opened
-   */
-  bool is_opened(void)
-  {
-    return (imu.fd_ >= 0);
-  }
-  /**
    * @brief Open IMU device file
    */
-  void open(void)
+  bool open(void)
   {
     // Open device file
-    if (imu.openPort(device_) < 0)
+    if (imu.open_port(device_) < 0)
     {
       ROS_ERROR("Failed to open device %s", device_.c_str());
+	  return false;
     }
     // Wait 10ms for SPI ready
     usleep(10000);
     int16_t pid = 0;
-    imu.get_product_id(pid);
+    if (imu.get_product_id(pid) < 0)
+    {
+      ROS_ERROR("Failed to get product id");
+	  return false;
+    }
     ROS_INFO("Product ID: %x\n", pid);
-    imu.set_bias_estimation_time(bias_conf_);
+    if (imu.set_bias_estimation_time(bias_conf_) < 0)
+    {
+      ROS_ERROR("Failed to set bias estimation period");
+	  return false;
+    }
+	return true;
   }
   void publish_imu_data()
   {
@@ -119,7 +130,7 @@ public:
     data.header.frame_id = frame_id_;
     data.header.stamp = ros::Time::now();
 
-    // Linear acceleration 
+    // Linear acceleration
     data.linear_acceleration.x = imu.accl[0];
     data.linear_acceleration.y = imu.accl[1];
     data.linear_acceleration.z = imu.accl[2];
@@ -137,6 +148,19 @@ public:
 
     imu_data_pub_.publish(data);
   }
+  void publish_temp_data() {
+    if (!publish_temperature_)
+	  return;
+    sensor_msgs::Temperature data;
+    data.header.frame_id = frame_id_;
+    data.header.stamp = ros::Time::now();
+
+    // imu Temperature
+    data.temperature = imu.temp;
+    data.variance = 0;
+
+    temp_data_pub_.publish(data);
+  }
   bool spin()
   {
     ros::Rate loop_rate(rate_);
@@ -148,6 +172,7 @@ public:
         if (imu.update_burst() == 0)
         {
           publish_imu_data();
+		  publish_temp_data();
         }
         else
         {
@@ -159,6 +184,7 @@ public:
         if (imu.update() == 0)
         {
           publish_imu_data();
+		  publish_temp_data();
         }
         else
         {
@@ -178,12 +204,10 @@ int main(int argc, char** argv)
   ros::NodeHandle nh("~");
   ImuNode node(nh);
 
-  node.open();
-  while (!node.is_opened())
+  while (!node.open())
   {
     ROS_WARN("Keep trying to open the device in 1 second period...");
-    sleep(1);
-    node.open();
+	ros::Rate(1).sleep();
   }
   node.spin();
   return(0);

@@ -34,35 +34,37 @@
 #define ADI_DRIVER_ADIS16495_H
 
 #include <termios.h>
+#include <array>
 #include <string>
 
-class Adis16495	
+#include "adi_driver/serial_port.h"
+
+class Adis16495
 {
 public:
-  //! File descripter for USB-ISS
-  int fd_;
-  //! Saved terminal config
-  struct termios defaults_;
-
   // Gyro sensor(x, y, z)
-  double gyro[3];
+  std::array<double, 3> gyro;
   // Acceleration sensor(x, y, z)
-  double accl[3];
+  std::array<double, 3> accl;
 
-  double temp; 						//Add temp
+  // Reported device temperature
+  double temp;
 
   Adis16495();
-  int openPort(const std::string device);
-  void closePort();
+  ~Adis16495();
+  int open_port(const std::string device);
   int get_product_id(int16_t& data);
   int update(void);
   int update_burst(void);
   int read_register(unsigned char address, int16_t& data);
-
-  int write_register(unsigned char address, int16_t data);	//Add function
-  int set_bias_estimation_time(int16_t tbc); 		//Add funciton
-  int bias_correction_update(void);			//Add function
-  
+  int write_register(unsigned char address, int16_t data);
+  int set_bias_estimation_time(int16_t tbc);
+  int bias_correction_update(void);
+private:
+  int16_t set_new_page(int16_t new_page_id);
+  SerialPort serial_port;
+  double k_g;
+  double accl_scale_factor; // 495 vs 497 have different accl scale factors
 };
 
 #endif  // ADI_DRIVER_ADIS16470_H

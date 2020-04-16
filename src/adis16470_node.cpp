@@ -96,20 +96,16 @@ public:
                                               &ImuNode::bias_estimate, this);
   }
 
-  ~ImuNode() { imu.closePort(); }
+  ~ImuNode() { }
 
-  /**
-   * @brief Check if the device is opened
-   */
-  bool is_opened(void) { return imu.isOpened(); }
   /**
    * @brief Open IMU device file
    */
   bool open(void) {
     // Open device file
-    if (imu.openPort(device_) < 0) {
+    if (imu.open_port(device_) < 0) {
       ROS_ERROR("Failed to open device %s", device_.c_str());
-	  return false;
+      return false;
     }
     // Wait 10ms for SPI ready
     usleep(10000);
@@ -119,7 +115,7 @@ public:
     imu.set_bias_estimation_time(bias_conf_);
     imu.set_filt_ctrl(filt_);
     imu.set_dec_rate(dec_rate_);
-	return true;
+    return true;
   }
 
   void publish_imu_data() {
@@ -146,6 +142,8 @@ public:
     imu_data_pub_.publish(data);
   }
   void publish_temp_data() {
+    if (!publish_temperature_)
+      return;
     sensor_msgs::Temperature data;
     data.header.frame_id = frame_id_;
     data.header.stamp = ros::Time::now();
@@ -163,33 +161,15 @@ public:
       if (burst_mode_) {
         if (imu.update_burst() == 0) {
           publish_imu_data();
-        } else {
-          ROS_ERROR("Cannot update burst");
-          //break;
-        }
-      } else if (publish_temperature_) {
-        if (imu.update() == 0) {
-          publish_imu_data();
-          publish_temp_data();
-        } else {
-          ROS_ERROR("Cannot update");
-          //break;
-        }
-      } else if (burst_mode_ && publish_temperature_) {
-        if (imu.update_burst() == 0) {
-          publish_imu_data();
           publish_temp_data();
         } else {
           ROS_ERROR("Cannot update burst");
-          //break;
         }
+      } else if (imu.update() == 0) {
+        publish_imu_data();
+        publish_temp_data();
       } else {
-        if (imu.update() == 0) {
-          publish_imu_data();
-        } else {
-          ROS_ERROR("Cannot update");
-          //break;
-        }
+        ROS_ERROR("Cannot update");
       }
       ros::spinOnce();
       loop_rate.sleep();
@@ -203,7 +183,7 @@ int main(int argc, char **argv) {
   ros::NodeHandle nh("~");
   ImuNode node(nh);
 
-  if (!node.open() || !node.is_opened()) {
+  if (!node.open()) {
     ROS_ERROR("Failed to Open an IMU");
     return 1;
   }

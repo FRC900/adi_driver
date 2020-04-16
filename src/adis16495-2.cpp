@@ -30,7 +30,6 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
 // OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "ros/ros.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,16 +41,19 @@
 #include <string>
 #include "adi_driver/adis16495.h"
 
+static SerialPort serial_port;
+constexpr double gravity = 9.80665;
 
 /**
  * @brief change big endian 2 byte into short
  * @param data Head pointer to the data
  * @retrun converted value
  */
-int16_t big_endian_to_short(unsigned char *data)
+
+int16_t big_endian_to_short(uint8_t *data)
 {
-  unsigned char buff[2] = {data[1], data[0]};
-  return *reinterpret_cast<int16_t*>(buff);
+  const uint8_t buff[2] = {data[1], data[0]};
+  return *reinterpret_cast<const int16_t*>(buff);
 }
 
 /**
@@ -59,7 +61,8 @@ int16_t big_endian_to_short(unsigned char *data)
  * @param data Head pointer to the data
  * @retrun converted value
  */
-void short_to_big_endian(unsigned char *buff, int16_t data)
+
+void short_to_big_endian(uint8_t *buff, int16_t data)
 {
   buff[0] = data >> 8;
   buff[1] = data & 0x00ff;
@@ -70,8 +73,12 @@ void short_to_big_endian(unsigned char *buff, int16_t data)
  */
 
 Adis16495::Adis16495()
-  : fd_(-1)
 {
+}
+
+Adis16495::~Adis16495()
+{
+	serial_port.closePort();
 }
 
 /**
@@ -81,68 +88,141 @@ Adis16495::Adis16495()
  * @retval -1 Failure
  */
 
-int Adis16495::openPort(const std::string device)
+int Adis16495::open_port(const std::string device)
 {
-  fd_ = open(device.c_str(), O_RDWR | O_NOCTTY);
-  if (fd_ < 0)
+  if (serial_port.openPort(device))
   {
-    perror("openPort");
+    std::fprintf(stderr, "[Adis16495] Failed to open serial port.\r\n");
     return -1;
   }
-  if (tcgetattr(fd_, &defaults_) < 0)
-  {
-    perror("openPort");
-    return -1;
-  }
-  struct termios config;
-  cfmakeraw(&config);
-  if (tcsetattr(fd_, TCSANOW, &config) < 0)
-  {
-    perror("openPort");
-    return -1;
-  }
+  serial_port.flushPort();
+
   // Set SPI mode
-  unsigned char buff[20] = {0};
-  buff[0] = 0x5A;
-  buff[1] = 0x02;  					// Set mode command
-  buff[2] = 0x93;  					// Set SPI mode
-  buff[3] = 5;  					// 1MHz clock speed
+  const std::vector<uint8_t> init_packet = { 0x5A, 0x02, 0x93, 0x05 };
+  if (!serial_port.write_bytes(init_packet))
+  {
+	serial_port.closePort();
+    return -1;
+  }
+  std::vector<uint8_t> ack(2);
+  if (!serial_port.read_bytes(ack))
+  {
+	serial_port.closePort();
+    return -1;
+  }
+  //std::printf("Ack : %02X %02X\r\n", ack[0], ack[1]);
+  if (ack[0] != 0xFF || ack[1] != 0x00)
+  {
+	serial_port.closePort();
+    return -1;
+  }
+  // Wait 20ms for SPI ready
+  usleep(20000);
 
-  int size = write(fd_, buff, 4);
-  if (size != 4)
+  if (write_register(0x00, 0) < 0)
   {
-    perror("openPort");
-  }
-  if (tcdrain(fd_) < 0)
-  {
-    perror("openPort");
-  }
-  size = read(fd_, buff, 2);
-  if (size != 2)
-  {
-    perror("openPort");
+    std::fprintf(stderr, "[Adis16495] Init failed to write IMU to page 0.\r\n");
+	serial_port.closePort();
     return -1;
   }
-  // Check first byte
-  if (buff[0] != 0xff)
+  std::string prod_ver;
+  int16_t prod_id;
+  if (get_product_id(prod_id))
   {
-    perror("openPort");
+    std::fprintf(stderr, "[Adis16495] Init failed to read product ID.\r\n");
+	serial_port.closePort();
     return -1;
   }
+  switch (prod_id)
+  {
+	case 0x406f: // 16495
+	  accl_scale_factor = 0.25;
+	  prod_ver += "ADIS16495";
+	  break;
+	case 0x4071: // 16497
+	  accl_scale_factor = 1.25;
+	  prod_ver += "ADIS16497";
+	  break;
+	default:
+	  std::fprintf(stderr, "[Adis16495] Init failed to decode product ID %4.4x.\r\n", prod_id);
+	  serial_port.closePort();
+	  return -1;
+  }
+
+  if (write_register(0x00, 3) < 0)
+  {
+    std::fprintf(stderr, "[Adis16495] Init failed to write IMU to page 3.\r\n");
+	serial_port.closePort();
+    return -1;
+  }
+
+  int16_t rang_mdl;
+  if (read_register(0x12, rang_mdl) < 0)
+  {
+    std::fprintf(stderr, "[Adis16495] Init failed to request RANG_MDL.\r\n");
+	serial_port.closePort();
+    return -1;
+  }
+  if (read_register(0x78, rang_mdl) < 0)
+  {
+    std::fprintf(stderr, "[Adis16495] Init failed to read RANG_MDL.\r\n");
+	serial_port.closePort();
+    return -1;
+  }
+  switch(rang_mdl)
+  {
+	case 0x03: // -1
+	  k_g = .00625;
+	  prod_ver += "-1";
+	  break;
+	case 0x07: // -2
+	  k_g = 0.25;
+	  prod_ver += "-2";
+	  break;
+	case 0x0f: // -3
+	  k_g = 0.1;
+	  prod_ver += "-3";
+	  break;
+	default:
+	  std::fprintf(stderr, "[Adis16495] Init failed to decode RANG_MDL %2.2x.\r\n", rang_mdl);
+	  serial_port.closePort();
+	  return -1;
+  }
+
+  int16_t fw_rev;
+  if (read_register(0x7e, fw_rev) < 0)
+  {
+    std::fprintf(stderr, "[Adis16495] Init failed to read FIRM_REV.\r\n");
+	serial_port.closePort();
+  }
+  prod_ver += " FW " +
+	  std::to_string((static_cast<uint16_t>(fw_rev) >> 12) & 0x0F) +
+	  std::to_string((static_cast<uint16_t>(fw_rev) >>  8) & 0x0F) +
+	  "." +
+	  std::to_string((static_cast<uint16_t>(fw_rev) >>  4) & 0x0F) +
+	  std::to_string((static_cast<uint16_t>(fw_rev)      ) & 0x0F);
+
+  int16_t boot_rev;
+  if (read_register(0x00, boot_rev) < 0)
+  {
+    std::fprintf(stderr, "[Adis16495] Init failed to read BOOT_REV.\r\n");
+	serial_port.closePort();
+  }
+  prod_ver += " BOOT " +
+	  std::to_string((static_cast<uint16_t>(boot_rev) >> 8) & 0xFF) +
+	  "." +
+	  std::to_string((static_cast<uint16_t>(boot_rev)     ) & 0xFF);
+
+  fprintf(stderr, "Product is : %s\r\n", prod_ver.c_str());
+
+  if (write_register(0x00, 0) < 0)
+  {
+    std::fprintf(stderr, "[Adis16495] Init failed to write IMU to page 0.\r\n");
+	serial_port.closePort();
+    return -1;
+  }
+
   return 0;
-}
-
-/**
- * @brief Close device
- */
-
-void Adis16495::closePort()
-{
-  if (tcsetattr(fd_, TCSANOW, &defaults_) < 0)
-  {
-    perror("closePort");
-  }
-  close(fd_);
 }
 
 /**
@@ -153,55 +233,18 @@ void Adis16495::closePort()
 
 int Adis16495::get_product_id(int16_t& pid)
 {
-  // get product ID
-  unsigned char buff[20];
-
-  // Sending data
-  buff[0] = 0x61;
-  buff[1] = 0x7e;
-  buff[2] = 0x00;
-  int size = write(fd_, buff, 3);
-  if (size != 3)
-  {
-    perror("get_product_id");
-    return -1;
-  }
-  if (tcdrain(fd_) < 0)
-  {
-    perror("get_product_id");
-    return -1;
-  }
-  size = read(fd_, buff, 3);
-  if (size != 3)
-  {
-    perror("get_product_id");
-    return -1;
-  }
-  // Receiving data
-  buff[0] = 0x61;
-  buff[1] = 0x00;
-  buff[2] = 0x00;
-  size = write(fd_, buff, 3);
-  if (size != 3)
-  {
-    perror("get_product_id");
-    return -1;
-  }
-  if (tcdrain(fd_) < 0)
-  {
-    perror("get_product_id");
-    return -1;
-  }
-  size = read(fd_, buff, 3);
-  if (size != 3)
-  {
-    perror("get_product_id");
-    return -1;
-  }
-  // Convert to short
-  pid = big_endian_to_short(&buff[1]);
-  return 0;
-
+	if (read_register(0x7e, pid) < 0)
+	{
+		fprintf(stderr, "[Adis16495] Error first read register for product ID\r\n");
+		return -1;
+	}
+	pid = 0;
+	if (read_register(0x00, pid) < 0)
+	{
+		fprintf(stderr, "[Adis16495] Error second read register for product ID\r\n");
+		return -1;
+	}
+	return 0;
 }
 
 /**
@@ -211,29 +254,30 @@ int Adis16495::get_product_id(int16_t& pid)
  * @retval -1 Failed
  *
  * - Adress is the first byte of actual address
- * - Actual data at the adress will be returned by next call.
+ * - Actual data at the address will be returned by next call.
  */
 
 int Adis16495::read_register(unsigned char address, int16_t& data)
 {
-  unsigned char buff[3] = {0x61, address, 0x00};
-  int size = write(fd_, buff, 3);
-  if (size != 3)
+  static std::vector<uint8_t> tx_packet(3);
+  tx_packet[0] = 0x61;
+  tx_packet[1] = address;
+  tx_packet[2] = 0x00;
+  if (!serial_port.write_bytes(tx_packet))
   {
-    perror("read_register");
+    std::fprintf(stderr, "[Adis16495] Serial error : read_register write_bytes\r\n");
     return -1;
   }
-  if (tcdrain(fd_) < 0)
+  static std::vector<uint8_t> rx_packet(3);
+  std::fill(rx_packet.begin(), rx_packet.end(), 0x00);
+  if (!serial_port.read_bytes(rx_packet))
   {
-    perror("read_register");
+	data = 0;
+    std::fprintf(stderr, "[Adis16495] Serial error : read_register read_bytes\r\n");
     return -1;
   }
-  size = read(fd_, buff, 3);
-  if (size !=3)
-  {
-    perror("read");
-  }
-  data = big_endian_to_short(&buff[1]);
+  data = big_endian_to_short(&rx_packet[1]);
+  //fprintf(stderr, "read_register : address=%2.2x data=%4.4x\r\n", address, data);
   return 0;
 }
 
@@ -242,42 +286,38 @@ int Adis16495::read_register(unsigned char address, int16_t& data)
  * @param address Register address
  * @retval 0 Success
  * @retval -1 Failed
- * 
+ *
  * - Adress is the first byte of actual address.
  * - Specify data at the adress.
  */
 
 int Adis16495::write_register(unsigned char address, int16_t data)
 {
-  unsigned char buff[5] = {0x61, 0x00, 0x00, 0x00, 0x00};
+  //fprintf(stderr, "write_register : address=%2.2x data=%4.4x\r\n", address, data);
+  static std::vector<uint8_t> tx_packet(5);
+  tx_packet[0] = 0x61;
   // Set R~/W bit 1
-  buff[1] = address | 0x80;
-  buff[3] = (address + 1) | 0x80;
+  tx_packet[1] = address | 0x80;
+  tx_packet[3] = (address + 1) | 0x80;
   // Set data
-  buff[2] = data & 0xff;
-  buff[4] = data >> 8;
+  tx_packet[2] = data & 0xff;
+  tx_packet[4] = data >> 8;
 
-  int size = write(fd_, buff, sizeof(buff));
-  if (size != sizeof(buff))
+  if (!serial_port.write_bytes(tx_packet))
   {
-    perror("write_register");
+    std::fprintf(stderr, "[Adis16495] Serial error : write_register write_bytes\r\n");
     return -1;
   }
-  if (tcdrain(fd_) < 0)
+  static std::vector<uint8_t> rx_packet(5);
+  std::fill(rx_packet.begin(), rx_packet.end(), 0x00);
+  if (!serial_port.read_bytes(rx_packet))
   {
-    perror("write_register");
+    std::fprintf(stderr, "[Adis16495] Serial error : write_register read_bytes\r\n");
     return -1;
   }
-  unsigned char recv_buff[5] = {0, 0, 0, 0, 0};
-  size = read(fd_, recv_buff, sizeof(recv_buff));
-  if (size != sizeof(recv_buff))
+  if (rx_packet[0] != 0xff)
   {
-    perror("write_register");
-    return -1;
-  }
-  if (recv_buff[0] != 0xff)
-  {
-    perror("write_register: ACK error");
+    std::fprintf(stderr, "[Adis16495] Serial error : write_register ACK error : %2.2x\r\n", rx_packet[0]);
     return -1;
   }
   return 0;
@@ -287,74 +327,88 @@ int Adis16495::write_register(unsigned char address, int16_t data)
  * @brief Update all information by bust read
  * @retval 0 Success
  * @retval -1 Failed
- * 
- * - See burst read function at pp.14 
+ *
+ * - See burst read function at pp.15
  * - Data resolution is 16 bit
  */
 
 int Adis16495::update_burst(void)
 {
-  unsigned char buff[64] = {0};
+  constexpr size_t burst_size = 43;
+  static std::vector<uint8_t> tx_packet(burst_size);
+  tx_packet[0] = 0x61;
   // 0x7c00: Burst read function
-  buff[0] = 0x61;
-  buff[1] = 0x7c;
-  buff[2] = 0x00;
-  int size = write(fd_, buff, 38); 
-  if (size != 38)
+  tx_packet[1] = 0x7c;
+  std::fill(tx_packet.begin() + 2, tx_packet.end(), 0x00);
+  fprintf(stderr, "burst write: ");
+  for (size_t i = 0; i < tx_packet.size(); i++)
+	  fprintf(stderr, " %2.2x", static_cast<unsigned>(tx_packet[i]));
+  fprintf(stderr, "\r\n");
+  if (!serial_port.write_bytes(tx_packet))
   {
-    perror("update_burst");
+    std::fprintf(stderr, "[Adis16495] Serial error : update_burst write_bytes\r\n");
     return -1;
   }
-  if (tcdrain(fd_) < 0)
+  static std::vector<uint8_t> rx_packet(burst_size);
+  std::fill(rx_packet.begin(), rx_packet.end(), 0x00);
+  if (!serial_port.read_bytes(rx_packet))
   {
-    perror("update_burst");
+    std::fprintf(stderr, "[Adis16495] Serial error : update_burst read_bytes\r\n");
     return -1;
   }
-  size = read(fd_, buff, 40);
-  if (size != 40) 
+  fprintf(stderr, "burst read : ");
+  for (size_t i = 0; i < rx_packet.size(); i++)
+	  fprintf(stderr, " %2.2x", static_cast<unsigned>(rx_packet[i]));
+  fprintf(stderr, "\r\n");
+
+  const int16_t diag_stat = big_endian_to_short(&rx_packet[3]);
+  if (diag_stat != 0)
   {
-    perror("update_burst");
+    std::fprintf(stderr, "[Adis16495] Serial error : update_burst diag_stat error: %04x\r\n", static_cast<uint16_t>(diag_stat));
     return -1;
   }
 
-//  int16_t diag_stat = big_endian_to_short(&buff[3]);
-//  if (diag_stat != 0)
-//  {
-//    fprintf(stderr, "diag_stat error: %04x\n", (uint16_t)diag_stat);
-//    return -1;
-//  }
+  const uint16_t burst_id = static_cast<uint16_t>(big_endian_to_short(&rx_packet[5]));
+  if (burst_id != 0xA5A5)
+  {
+    std::fprintf(stderr, "[Adis16495] Serial error : update_burst burst_id error: %04x\r\n", static_cast<uint16_t>(burst_id));
+    return -1;
+  }
 
-
-//Burst read register for ADIS16495-2
+  //Burst read register for ADIS16495-x
   // TEMP_OUT
-  temp = big_endian_to_short(&buff[7]) * 0.1;
+  temp = 25. + static_cast<double>(big_endian_to_short(&rx_packet[7])) / 80.;
   // X_GYRO_OUT
-  gyro[0] = big_endian_to_short(&buff[9]) * M_PI / 180 / 10.0;
+  gyro[0] = big_endian_to_short(&rx_packet[9]) * M_PI / 180. * k_g;
   // Y_GYRO_OUT
-  gyro[1] = big_endian_to_short(&buff[11]) * M_PI / 180 / 10.0;
+  gyro[1] = big_endian_to_short(&rx_packet[11]) * M_PI / 180. * k_g;
   // Z_GYRO_OUT
-  gyro[2] = big_endian_to_short(&buff[13]) * M_PI / 180 / 10.0;
+  gyro[2] = big_endian_to_short(&rx_packet[13]) * M_PI / 180. * k_g;
   // X_ACCL_OUT
-  accl[0] = big_endian_to_short(&buff[15]) * M_PI / 180 / 10.0;
+  accl[0] = big_endian_to_short(&rx_packet[15]) * accl_scale_factor * gravity / 1000.;
   // Y_ACCL_OUT
-  accl[1] = big_endian_to_short(&buff[17]) * M_PI / 180 / 10.0;
+  accl[1] = big_endian_to_short(&rx_packet[17]) * accl_scale_factor * gravity / 1000.;
   // Z_ACCL_OUT
-  accl[2] = big_endian_to_short(&buff[19]) * M_PI / 180 / 10.0;
-
+  accl[2] = big_endian_to_short(&rx_packet[19]) * accl_scale_factor * gravity / 1000.;
 
   return 0;
+}
+
+
+static int32_t convert_out_low_short(uint16_t out, uint16_t low)
+{
+	return (uint32_t(out) << 16) | uint32_t(low);
 }
 
 /**
  * @brief update gyro and accel in high-precision read
  */
-
 int Adis16495::update(void)
 {
   int16_t gyro_out[3], gyro_low[3], accl_out[3], accl_low[3], temp_out;
 
-//Register for ADIS16495
-  read_register(0x10, gyro_low[0]);
+  //Register for ADIS16495
+  read_register(0x10, gyro_low[0]); // Each request has a response 1 read later
   read_register(0x12, gyro_low[0]);
   read_register(0x14, gyro_out[0]);
   read_register(0x16, gyro_low[1]);
@@ -366,42 +420,88 @@ int Adis16495::update(void)
   read_register(0x22, accl_low[1]);
   read_register(0x24, accl_out[1]);
   read_register(0x26, accl_low[2]);
-  read_register(0x1e, accl_out[2]);
+  read_register(0x0e, accl_out[2]);
   read_register(0x00, temp_out);
 
   // temperature convert
-  temp = temp_out * 0.1;
+  temp = 25. + static_cast<double>(temp_out) / 80.;
 
   // 32bit convert
-  for (int i=0; i < 3; i++)
+  for (size_t i = 0; i < 3; i++)
   {
-    gyro[i] = ((int32_t(gyro_out[i]) << 16) + int32_t(gyro_low[i])) * M_PI / 180.0 / 2621440.0;
-    accl[i] = ((int32_t(accl_out[i]) << 16) + int32_t(accl_low[i])) * 9.8 / 262144000.0;
+    gyro[i] = convert_out_low_short(gyro_out[i], gyro_low[i]) * (M_PI / 180.0) * (k_g / static_cast<double>(1<<16));
+    accl[i] = convert_out_low_short(accl_out[i], accl_low[i]) * (accl_scale_factor / static_cast<double>(1<<16)) * (gravity / 1000.);
   }
   return 0;
 }
 
 /**
- * @brief set bias estimating time (GLOB_CMD)
+ * @brief Save away current page and set a new one
+ * @param new_page_id page id to set
+ * @retval previous page id
+ * @retval -1 error
+ */
+int16_t Adis16495::set_new_page(int16_t new_page_id)
+{
+  int16_t old_page_id;
+  if (read_register(0x00, old_page_id) < 0) // Request page ID read
+  {
+	  fprintf(stderr, "[Adis16495] Set page ID request\r\n");
+	  return -1;
+  }
+  if (read_register(0x00, old_page_id) < 0)
+  {
+	  fprintf(stderr, "[Adis16495] Set page ID response\r\n");
+	  return -1;
+  }
+
+  if (old_page_id != new_page_id)
+  {
+	  if (write_register(0x00, new_page_id) < 0) // set page 3
+	  {
+		  fprintf(stderr, "[Adis16495] Set write page %4.4x\r\n", new_page_id);
+		  write_register(0x00, old_page_id);
+		  return -1;
+	  }
+  }
+  return 0;
+}
+
+/**
+ * @brief set bias estimating time (NULL_CNFG)
  * @retval 0 Success
  * @retval -1 Failed
  */
-
 int Adis16495::set_bias_estimation_time(int16_t tbc)
 {
-  int16_t page_id;
-  read_register(0x00, page_id);
+  int16_t page_id = set_new_page(3);
+  if (page_id < 0)
+	  return -1;
 
-  write_register(0x00, 3); // set page 3
-
-  write_register(0x0e, tbc);
+  int rc = 0;
+  if (write_register(0x0e, tbc) < 0)
+  {
+	  fprintf(stderr, "[Adis16495] Set bias write TBC = %4.4x\r\n", tbc);
+	  rc = -1;
+  }
+  if (!rc && read_register(0x0e, tbc) < 0) // request TBC readback
+  {
+	  fprintf(stderr, "[Adis16495] Set bias TBC readback request\r\n");
+	  rc = -1;
+  }
   tbc = 0;
-  int16_t dummy = 0;
-  read_register(0x0e, dummy);
-  read_register(0x00, tbc);
-  ROS_INFO("TBC: %04x", tbc);
-  write_register(0x00, page_id); // restore page ID
-  return 0;
+  if (!rc && read_register(0x00, tbc) < 0) // Get TBC request data response
+  {
+	  fprintf(stderr, "[Adis16495] Set bias TBC readback response\r\n");
+	  rc = -1;
+  }
+  fprintf(stderr, "TBC: %04x\r\n", tbc);
+  if ((page_id != 3) && (write_register(0x00, page_id) < 0)) // restore page ID
+  {
+	  fprintf(stderr, "[Adis16495] Set bias restore page ID %4.4x\r\n", page_id);
+	  rc = -1;
+  }
+  return rc;
 }
 
 /**
@@ -412,15 +512,22 @@ int Adis16495::set_bias_estimation_time(int16_t tbc)
 
 int Adis16495::bias_correction_update(void)
 {
-  int16_t page_id;
-  read_register(0x00, page_id);
+  int16_t page_id = set_new_page(3);
+  if (page_id < 0)
+	  return -1;
 
-  write_register(0x00, 3); // set page 3
   // Bit0: Bias correction update
   int16_t data = 1;
-  write_register(0x02, data);
-  write_register(0x00, page_id); // restore page ID
-  return 0;
+  int rc = 0;
+  if (write_register(0x02, data) < 0)
+  {
+	  fprintf(stderr, "[Adis16495] Set bias correction command\r\n");
+	  rc = -1;
+  }
+  if ((page_id != 3) && (write_register(0x00, page_id) < 0)) // restore page ID
+  {
+	  fprintf(stderr, "[Adis16495] Set bias correction restore page ID %4.4x\r\n", page_id);
+	  rc = -1;
+  }
+  return rc;
 }
-
-

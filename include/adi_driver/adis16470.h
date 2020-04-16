@@ -34,32 +34,25 @@
 #define ADI_DRIVER_ADIS16470_H
 
 #include <termios.h>
+#include <array>
 #include <string>
-#include <thread>
-#include <vector>
 
-#include <boost/asio.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/bind.hpp>
-#include <boost/lambda/lambda.hpp>
-
-namespace ba = boost::asio;
+#include "adi_driver/serial_port.h"
 
 class Adis16470
 {
 public:
   // Gyro sensor(x, y, z)
-  double gyro[3];
+  std::array<double, 3> gyro;
   // Acceleration sensor(x, y, z)
-  double accl[3];
+  std::array<double, 3> accl;
   // Temperature sensor
   double temp;
 
   Adis16470();
   ~Adis16470();
-  int openPort(const std::string device);
-  void closePort();
-  bool isOpened();
+  int open_port(const std::string &device);
+
   int get_product_id(uint16_t &);
   int update(void);
   int update_burst(void);
@@ -69,34 +62,14 @@ public:
   int set_dec_rate(const uint16_t rate);
 
 private:
-  typedef enum
-  {
-    IDLE,
-    WRITE,
-    READ,
-    TRANSFER,
-    TIME_OUT,
-	SERIAL_ERROR
-  } PORT_STATUS;
-  ba::io_service port_io;
-  //ba::io_service wdg_io;
-  ba::serial_port port;
-  //std::thread port_handel_thread;
-  //ba::streambuf serial_buf;
-  const double wdg_timeout;
-  ba::deadline_timer wdg;
-  PORT_STATUS status;
-
-  bool flush_port();
-  bool write_bytes(const std::vector<uint8_t> &, const double timeout = 1.0);
-  bool read_bytes(std::vector<uint8_t> &, const double timeout = 1.0);
   bool write_register(const uint8_t address, const uint16_t);
   bool read_register(const uint8_t address, uint16_t &);
-  void wdg_handler(const boost::system::error_code &);
-  void serial_handler(const boost::system::error_code &);
+  bool read_register_half_transaction(const uint8_t address, uint16_t &);
   bool init_usb_iss();
   bool initAdis16470();
   int16_t big_endian_to_short(const uint8_t *buf);
+
+  SerialPort serial_port;
 };
 
 #endif // ADI_DRIVER_ADIS16470_H
