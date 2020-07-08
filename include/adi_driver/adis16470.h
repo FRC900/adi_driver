@@ -70,6 +70,8 @@ private:
   int16_t big_endian_to_short(const uint8_t *buf);
 
   SerialPort serial_port;
+  double accl_scale_factor;
+  double k_g;
 };
 
 #endif // ADI_DRIVER_ADIS16470_H

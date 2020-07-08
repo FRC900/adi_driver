@@ -76,6 +76,10 @@ Adis16495::Adis16495()
 {
 }
 
+/**
+ * @brief Destructor
+ */
+
 Adis16495::~Adis16495()
 {
 	serial_port.closePort();
@@ -88,11 +92,11 @@ Adis16495::~Adis16495()
  * @retval -1 Failure
  */
 
-int Adis16495::open_port(const std::string device)
+int Adis16495::open_port(const std::string& device)
 {
   if (serial_port.openPort(device))
   {
-    std::fprintf(stderr, "[Adis16495] Failed to open serial port.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Failed to open serial port.\r\n");
     return -1;
   }
   serial_port.flushPort();
@@ -119,20 +123,24 @@ int Adis16495::open_port(const std::string device)
   // Wait 20ms for SPI ready
   usleep(20000);
 
+  std::printf("[Adis1649x] Opened\r\n");
+
   if (write_register(0x00, 0) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to write IMU to page 0.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to write IMU to page 0.\r\n");
 	serial_port.closePort();
     return -1;
   }
+
   std::string prod_ver;
   int16_t prod_id;
   if (get_product_id(prod_id))
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to read product ID.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to read product ID.\r\n");
 	serial_port.closePort();
     return -1;
   }
+
   switch (prod_id)
   {
 	case 0x406f: // 16495
@@ -144,14 +152,14 @@ int Adis16495::open_port(const std::string device)
 	  prod_ver += "ADIS16497";
 	  break;
 	default:
-	  std::fprintf(stderr, "[Adis16495] Init failed to decode product ID %4.4x.\r\n", prod_id);
+	  std::fprintf(stderr, "[Adis1649x] Init failed to decode product ID %4.4x.\r\n", prod_id);
 	  serial_port.closePort();
 	  return -1;
   }
 
   if (write_register(0x00, 3) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to write IMU to page 3.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to write IMU to page 3.\r\n");
 	serial_port.closePort();
     return -1;
   }
@@ -159,13 +167,13 @@ int Adis16495::open_port(const std::string device)
   int16_t rang_mdl;
   if (read_register(0x12, rang_mdl) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to request RANG_MDL.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to request RANG_MDL.\r\n");
 	serial_port.closePort();
     return -1;
   }
   if (read_register(0x78, rang_mdl) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to read RANG_MDL.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to read RANG_MDL.\r\n");
 	serial_port.closePort();
     return -1;
   }
@@ -176,7 +184,7 @@ int Adis16495::open_port(const std::string device)
 	  prod_ver += "-1";
 	  break;
 	case 0x07: // -2
-	  k_g = 0.25;
+	  k_g = 0.025;
 	  prod_ver += "-2";
 	  break;
 	case 0x0f: // -3
@@ -184,7 +192,7 @@ int Adis16495::open_port(const std::string device)
 	  prod_ver += "-3";
 	  break;
 	default:
-	  std::fprintf(stderr, "[Adis16495] Init failed to decode RANG_MDL %2.2x.\r\n", rang_mdl);
+	  std::fprintf(stderr, "[Adis1649x] Init failed to decode RANG_MDL %2.2x.\r\n", rang_mdl);
 	  serial_port.closePort();
 	  return -1;
   }
@@ -192,7 +200,7 @@ int Adis16495::open_port(const std::string device)
   int16_t fw_rev;
   if (read_register(0x7e, fw_rev) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to read FIRM_REV.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to read FIRM_REV.\r\n");
 	serial_port.closePort();
   }
   prod_ver += " FW " +
@@ -205,7 +213,7 @@ int Adis16495::open_port(const std::string device)
   int16_t boot_rev;
   if (read_register(0x00, boot_rev) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to read BOOT_REV.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to read BOOT_REV.\r\n");
 	serial_port.closePort();
   }
   prod_ver += " BOOT " +
@@ -217,7 +225,7 @@ int Adis16495::open_port(const std::string device)
 
   if (write_register(0x00, 0) < 0)
   {
-    std::fprintf(stderr, "[Adis16495] Init failed to write IMU to page 0.\r\n");
+    std::fprintf(stderr, "[Adis1649x] Init failed to write IMU to page 0.\r\n");
 	serial_port.closePort();
     return -1;
   }
@@ -235,13 +243,13 @@ int Adis16495::get_product_id(int16_t& pid)
 {
 	if (read_register(0x7e, pid) < 0)
 	{
-		fprintf(stderr, "[Adis16495] Error first read register for product ID\r\n");
+		fprintf(stderr, "[Adis1649x] Error first read register for product ID\r\n");
 		return -1;
 	}
 	pid = 0;
 	if (read_register(0x00, pid) < 0)
 	{
-		fprintf(stderr, "[Adis16495] Error second read register for product ID\r\n");
+		fprintf(stderr, "[Adis1649x] Error second read register for product ID\r\n");
 		return -1;
 	}
 	return 0;
@@ -265,7 +273,7 @@ int Adis16495::read_register(unsigned char address, int16_t& data)
   tx_packet[2] = 0x00;
   if (!serial_port.write_bytes(tx_packet))
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : read_register write_bytes\r\n");
+    std::fprintf(stderr, "[Adis1649x] Serial error : read_register write_bytes\r\n");
     return -1;
   }
   static std::vector<uint8_t> rx_packet(3);
@@ -273,7 +281,7 @@ int Adis16495::read_register(unsigned char address, int16_t& data)
   if (!serial_port.read_bytes(rx_packet))
   {
 	data = 0;
-    std::fprintf(stderr, "[Adis16495] Serial error : read_register read_bytes\r\n");
+    std::fprintf(stderr, "[Adis1649x] Serial error : read_register read_bytes\r\n");
     return -1;
   }
   data = big_endian_to_short(&rx_packet[1]);
@@ -305,19 +313,19 @@ int Adis16495::write_register(unsigned char address, int16_t data)
 
   if (!serial_port.write_bytes(tx_packet))
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : write_register write_bytes\r\n");
+    std::fprintf(stderr, "[Adis1649x] Serial error : write_register write_bytes\r\n");
     return -1;
   }
   static std::vector<uint8_t> rx_packet(5);
   std::fill(rx_packet.begin(), rx_packet.end(), 0x00);
   if (!serial_port.read_bytes(rx_packet))
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : write_register read_bytes\r\n");
+    std::fprintf(stderr, "[Adis1649x] Serial error : write_register read_bytes\r\n");
     return -1;
   }
   if (rx_packet[0] != 0xff)
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : write_register ACK error : %2.2x\r\n", rx_packet[0]);
+    std::fprintf(stderr, "[Adis1649x] Serial error : write_register ACK error : %2.2x\r\n", rx_packet[0]);
     return -1;
   }
   return 0;
@@ -346,14 +354,14 @@ int Adis16495::update_burst(void)
   fprintf(stderr, "\r\n");
   if (!serial_port.write_bytes(tx_packet))
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : update_burst write_bytes\r\n");
+    std::fprintf(stderr, "[Adis1649x] Serial error : update_burst write_bytes\r\n");
     return -1;
   }
   static std::vector<uint8_t> rx_packet(burst_size);
   std::fill(rx_packet.begin(), rx_packet.end(), 0x00);
   if (!serial_port.read_bytes(rx_packet))
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : update_burst read_bytes\r\n");
+    std::fprintf(stderr, "[Adis1649x] Serial error : update_burst read_bytes\r\n");
     return -1;
   }
   fprintf(stderr, "burst read : ");
@@ -364,14 +372,14 @@ int Adis16495::update_burst(void)
   const int16_t diag_stat = big_endian_to_short(&rx_packet[3]);
   if (diag_stat != 0)
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : update_burst diag_stat error: %04x\r\n", static_cast<uint16_t>(diag_stat));
+    std::fprintf(stderr, "[Adis1649x] Serial error : update_burst diag_stat error: %04x\r\n", static_cast<uint16_t>(diag_stat));
     return -1;
   }
 
   const uint16_t burst_id = static_cast<uint16_t>(big_endian_to_short(&rx_packet[5]));
   if (burst_id != 0xA5A5)
   {
-    std::fprintf(stderr, "[Adis16495] Serial error : update_burst burst_id error: %04x\r\n", static_cast<uint16_t>(burst_id));
+    std::fprintf(stderr, "[Adis1649x] Serial error : update_burst burst_id error: %04x\r\n", static_cast<uint16_t>(burst_id));
     return -1;
   }
 
@@ -446,12 +454,12 @@ int16_t Adis16495::set_new_page(int16_t new_page_id)
   int16_t old_page_id;
   if (read_register(0x00, old_page_id) < 0) // Request page ID read
   {
-	  fprintf(stderr, "[Adis16495] Set page ID request\r\n");
+	  fprintf(stderr, "[Adis1649x] Set page ID request\r\n");
 	  return -1;
   }
   if (read_register(0x00, old_page_id) < 0)
   {
-	  fprintf(stderr, "[Adis16495] Set page ID response\r\n");
+	  fprintf(stderr, "[Adis1649x] Set page ID response\r\n");
 	  return -1;
   }
 
@@ -459,7 +467,7 @@ int16_t Adis16495::set_new_page(int16_t new_page_id)
   {
 	  if (write_register(0x00, new_page_id) < 0) // set page 3
 	  {
-		  fprintf(stderr, "[Adis16495] Set write page %4.4x\r\n", new_page_id);
+		  fprintf(stderr, "[Adis1649x] Set write page %4.4x\r\n", new_page_id);
 		  write_register(0x00, old_page_id);
 		  return -1;
 	  }
@@ -481,24 +489,24 @@ int Adis16495::set_bias_estimation_time(int16_t tbc)
   int rc = 0;
   if (write_register(0x0e, tbc) < 0)
   {
-	  fprintf(stderr, "[Adis16495] Set bias write TBC = %4.4x\r\n", tbc);
+	  fprintf(stderr, "[Adis1649x] Set bias write TBC = %4.4x\r\n", tbc);
 	  rc = -1;
   }
   if (!rc && read_register(0x0e, tbc) < 0) // request TBC readback
   {
-	  fprintf(stderr, "[Adis16495] Set bias TBC readback request\r\n");
+	  fprintf(stderr, "[Adis1649x] Set bias TBC readback request\r\n");
 	  rc = -1;
   }
   tbc = 0;
   if (!rc && read_register(0x00, tbc) < 0) // Get TBC request data response
   {
-	  fprintf(stderr, "[Adis16495] Set bias TBC readback response\r\n");
+	  fprintf(stderr, "[Adis1649x] Set bias TBC readback response\r\n");
 	  rc = -1;
   }
   fprintf(stderr, "TBC: %04x\r\n", tbc);
   if ((page_id != 3) && (write_register(0x00, page_id) < 0)) // restore page ID
   {
-	  fprintf(stderr, "[Adis16495] Set bias restore page ID %4.4x\r\n", page_id);
+	  fprintf(stderr, "[Adis1649x] Set bias restore page ID %4.4x\r\n", page_id);
 	  rc = -1;
   }
   return rc;
@@ -521,12 +529,12 @@ int Adis16495::bias_correction_update(void)
   int rc = 0;
   if (write_register(0x02, data) < 0)
   {
-	  fprintf(stderr, "[Adis16495] Set bias correction command\r\n");
+	  fprintf(stderr, "[Adis1649x] Set bias correction command\r\n");
 	  rc = -1;
   }
   if ((page_id != 3) && (write_register(0x00, page_id) < 0)) // restore page ID
   {
-	  fprintf(stderr, "[Adis16495] Set bias correction restore page ID %4.4x\r\n", page_id);
+	  fprintf(stderr, "[Adis1649x] Set bias correction restore page ID %4.4x\r\n", page_id);
 	  rc = -1;
   }
   return rc;

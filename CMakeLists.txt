@@ -11,11 +11,11 @@ catkin_package(INCLUDE_DIRS include CATKIN_DEPENDS roscpp sensor_msgs std_srvs)
 
 include_directories(include ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 
-add_executable(adis16470_node src/adis16470_node.cpp src/adis16470.cpp src/serial_port.cpp)
+add_executable(adis16470_node src/adis16470_node.cpp src/adis1647x.cpp src/serial_port.cpp)
 target_link_libraries(adis16470_node ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 #Add adis16495
-add_executable(adis16495_node src/adis16495_node.cpp src/adis16495-2.cpp src/serial_port.cpp)
+add_executable(adis16495_node src/adis16495_node.cpp src/adis1649x.cpp src/serial_port.cpp)
 target_link_libraries(adis16495_node ${catkin_LIBRARIES})
 
 add_executable(adxl345_node src/adxl345_node.cpp src/adxl345.cpp)

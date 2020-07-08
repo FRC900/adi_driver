@@ -52,7 +52,7 @@ public:
 
   Adis16495();
   ~Adis16495();
-  int open_port(const std::string device);
+  int open_port(const std::string& device);
   int get_product_id(int16_t& data);
   int update(void);
   int update_burst(void);

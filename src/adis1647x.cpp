@@ -64,7 +64,7 @@ int Adis16470::open_port(const std::string &device)
 {
   if (serial_port.openPort(device))
   {
-    std::fprintf(stderr, "[Adis16470] Failed to open serial port.\r\n");
+    std::fprintf(stderr, "[Adis1647x] Failed to open serial port.\r\n");
     return -1;
   }
 
@@ -75,7 +75,73 @@ int Adis16470::open_port(const std::string &device)
     return -1;
   }
 
-  std::printf("[Adis16470] Opened\r\n");
+  std::printf("[Adis1647x] Opened\r\n");
+
+    std::string prod_ver;
+  int16_t prod_id;
+  if (get_product_id(prod_id))
+  {
+    std::fprintf(stderr, "[Adis1647x] Init failed to read product ID.\r\n");
+	serial_port.closePort();
+    return -1;
+  }
+
+  switch (prod_id)
+  {
+	case 0x4056: // 16470
+	  accl_scale_factor = 1.25;
+	  k_g = 0.1;
+	  prod_ver += "ADIS16470";
+	  break;
+	case 0x405b: // 16475
+	  prod_ver += "ADIS16475";
+	  accl_scale_factor = 0.25;
+	  int16_t rang_mdl;
+	  if (!read_register(0x5e, rang_mdl))
+	  {
+	    std::fprintf(stderr, "[Adis1647x] Init failed to read RANG_MDL.\r\n");
+	    serial_port.closePort();
+	    return -1;
+	  }
+	  switch(rang_mdl)
+	  {
+	    case 0x03: // -1
+	      k_g = .00625;
+	      prod_ver += "-1";
+	      break;
+	    case 0x07: // -2
+	      k_g = 0.025;
+	      prod_ver += "-2";
+	      break;
+	    case 0x0f: // -3
+	      k_g = 0.1;
+	      prod_ver += "-3";
+	      break;
+	    default:
+	      std::fprintf(stderr, "[Adis1647x] Init failed to decode RANG_MDL %2.2x.\r\n", rang_mdl);
+	      serial_port.closePort();
+	  }
+	  break;
+	default:
+	  std::fprintf(stderr, "[Adis1647x] Init failed to decode product ID %4.4x.\r\n", prod_id);
+	  serial_port.closePort();
+	  return -1;
+  }
+  int16_t fw_rev;
+  if (!read_register(0x6c, fw_rev))
+  {
+    std::fprintf(stderr, "[Adis1647x] Init failed to read FIRM_REV.\r\n");
+	serial_port.closePort();
+  }
+  prod_ver += " FW " +
+	  std::to_string((static_cast<uint16_t>(fw_rev) >> 12) & 0x0F) +
+	  std::to_string((static_cast<uint16_t>(fw_rev) >>  8) & 0x0F) +
+	  "." +
+	  std::to_string((static_cast<uint16_t>(fw_rev) >>  4) & 0x0F) +
+	  std::to_string((static_cast<uint16_t>(fw_rev)      ) & 0x0F);
+
+
+  fprintf(stderr, "Product is : %s\r\n", prod_ver.c_str());
 
   return 0;
 }
@@ -160,17 +226,17 @@ int Adis16470::update_burst(void)
 
   //
   // X_GYRO_OUT
-  gyro[0] = big_endian_to_short(&burstReadBuf[5]) * M_PI / 180 / 10.0;
+  gyro[0] = big_endian_to_short(&burstReadBuf[5]) * M_PI / 180 * k_g;
   // Y_GYRO_OUT
-  gyro[1] = big_endian_to_short(&burstReadBuf[7]) * M_PI / 180 / 10.0;
+  gyro[1] = big_endian_to_short(&burstReadBuf[7]) * M_PI / 180 * k_g;
   // Z_GYRO_OUT
-  gyro[2] = big_endian_to_short(&burstReadBuf[9]) * M_PI / 180 / 10.0;
+  gyro[2] = big_endian_to_short(&burstReadBuf[9]) * M_PI / 180 * k_g;
   // X_ACCL_OUT
-  accl[0] = big_endian_to_short(&burstReadBuf[11]) * (1.25 / 1000.) * 9.80665;
+  accl[0] = big_endian_to_short(&burstReadBuf[11]) * accl_scale_factor * 9.80665 / 1000.;
   // Y_ACCL_OUT
-  accl[1] = big_endian_to_short(&burstReadBuf[13]) * (1.25 / 1000.) * 9.80665;
+  accl[1] = big_endian_to_short(&burstReadBuf[13]) * accl_scale_factor * 9.80665 / 1000.;
   // Z_ACCL_OUT
-  accl[2] = big_endian_to_short(&burstReadBuf[15]) * (1.25 / 1000.) * 9.80665;
+  accl[2] = big_endian_to_short(&burstReadBuf[15]) * accl_scale_factor * 9.80665 / 1000.;
   // TEMP_OUT
   temp = big_endian_to_short(&burstReadBuf[17]) * 0.1;
 
@@ -277,14 +343,12 @@ int Adis16470::update(void)
   // temperature convert
   temp = (double)temp_out * 0.1;
 
-  //printf("update start rconvert\r\n");
   // 32bit convert
   for (int i = 0; i < 3; i++)
   {
-    gyro[i] = (int32_t)((uint32_t(gyro_out[i]) << 16) | (uint32_t(gyro_low[i]) & 0x0000FFFF)) * M_PI / 180.0 / 655360.0;
-    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | (uint32_t(accl_low[i]) & 0x0000FFFF)) * 9.80665 * 1.25 / (double)(1<<16);
+    gyro[i] = (int32_t)((uint32_t(gyro_out[i]) << 16) | (uint32_t(gyro_low[i]) & 0x0000FFFF)) * (M_PI / 180.0) * (k_g / static_cast<double>(1<<16));
+    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | (uint32_t(accl_low[i]) & 0x0000FFFF)) * 9.80665 * (accl_scale_factor / static_cast<double>(1<<16));
   }
-  //printf("update start convert done\r\n");
   return 0;
 }
 
@@ -319,7 +383,7 @@ int Adis16470::bias_correction_update(void)
 int Adis16470::set_filt_ctrl(const int16_t filt)
 {
   if(filt > 8){
-    std::fprintf(stderr, "[Adis16470] Failed to set FILT_CTRL value\r\n");
+    std::fprintf(stderr, "[Adis1647x] Failed to set FILT_CTRL value\r\n");
     return -1;
   }
   if(!write_register(0x5C, filt)){
@@ -336,7 +400,7 @@ int Adis16470::set_filt_ctrl(const int16_t filt)
 int Adis16470::set_dec_rate(const int16_t rate)
 {
   if(rate > 1999){
-    std::fprintf(stderr, "[Adis16470] Failed to set DEC_RATE value\r\n");
+    std::fprintf(stderr, "[Adis1647x] Failed to set DEC_RATE value\r\n");
     return -1;
   }
   if(!write_register(0x64, rate)){
@@ -360,7 +424,7 @@ bool Adis16470::write_register(const uint8_t address, const int16_t data)
   tx_packet[2] = data & 0xFF;
   if (!serial_port.write_bytes(tx_packet))
   {
-    std::fprintf(stderr, "[Adis16470] SPI write while status not IDLE\r\n");
+    std::fprintf(stderr, "[Adis1647x] SPI write while status not IDLE\r\n");
     return false;
   }
   if (!serial_port.read_bytes(rx_packet))
@@ -369,7 +433,7 @@ bool Adis16470::write_register(const uint8_t address, const int16_t data)
   }
   if (rx_packet[0] != 0xFF)
   {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
+    std::fprintf(stderr, "[Adis1647x] Recieve NACK\r\n");
     return false;
   }
 
@@ -385,7 +449,7 @@ bool Adis16470::write_register(const uint8_t address, const int16_t data)
   }
   if (rx_packet[0] != 0xFF)
   {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
+    std::fprintf(stderr, "[Adis1647x] Recieve NACK\r\n");
     return false;
   }
 
@@ -416,7 +480,7 @@ bool Adis16470::read_register_half_transaction(const uint8_t address, int16_t& d
   }
   if (rx_packet[0] != 0xFF)
   {
-    std::fprintf(stderr, "[Adis16470] Recieve NACK\r\n");
+    std::fprintf(stderr, "[Adis1647x] Recieve NACK\r\n");
     return false;
   }
   data = big_endian_to_short(&rx_packet[1]);
