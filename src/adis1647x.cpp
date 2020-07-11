@@ -89,6 +89,7 @@ int Adis16470::open_port(const std::string &device)
   switch (prod_id)
   {
 	case 0x4056: // 16470
+	case 0x575f: // 16470-a-like?
 	  accl_scale_factor = 1.25;
 	  k_g = 0.1;
 	  prod_ver += "ADIS16470";
@@ -347,7 +348,7 @@ int Adis16470::update(void)
   for (int i = 0; i < 3; i++)
   {
     gyro[i] = (int32_t)((uint32_t(gyro_out[i]) << 16) | (uint32_t(gyro_low[i]) & 0x0000FFFF)) * (M_PI / 180.0) * (k_g / static_cast<double>(1<<16));
-    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | (uint32_t(accl_low[i]) & 0x0000FFFF)) * 9.80665 * (accl_scale_factor / static_cast<double>(1<<16));
+    accl[i] = (int32_t)((uint32_t(accl_out[i]) << 16) | (uint32_t(accl_low[i]) & 0x0000FFFF)) * (9.80665 / 1000.) * (accl_scale_factor / static_cast<double>(1<<16));
   }
   return 0;
 }

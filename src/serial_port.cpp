@@ -32,7 +32,7 @@ int SerialPort::openPort(const std::string &device)
   port.open(device, ec);
   if (ec.value() != 0)
   {
-    std::fprintf(stderr, "[ADI SerialPort] Failed to open. Error code : %d\r\n", ec.value());
+    std::fprintf(stderr, "[ADI SerialPort] Failed to open. Error code : %d (%s)\r\n", ec.value(), ec.message().c_str());
     return -1;
   }
   ec.clear();
